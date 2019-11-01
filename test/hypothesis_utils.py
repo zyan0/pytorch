@@ -8,8 +8,6 @@ from hypothesis import strategies as st
 from hypothesis.extra import numpy as stnp
 from hypothesis.searchstrategy import SearchStrategy
 
-from common_quantized import _calculate_dynamic_qparams, _calculate_dynamic_per_channel_qparams
-
 # Setup for the hypothesis tests.
 # The tuples are (torch_quantized_dtype, zero_point_enforce), where the last
 # element is enforced zero_point. If None, any zero_point point within the
@@ -33,11 +31,17 @@ _ENFORCED_ZERO_POINT = defaultdict(lambda: None, {
 def _get_valid_min_max(qparams):
     scale, zero_point, quantized_type = qparams
     adjustment = 1 + torch.finfo(torch.float).eps
-    _long_type_info = torch.iinfo(torch.long)
-    long_min, long_max = _long_type_info.min / adjustment, _long_type_info.max / adjustment
-    # make sure intermediate results are within the range of long
-    min_value = max((long_min - zero_point) * scale, (long_min / scale + zero_point))
-    max_value = min((long_max - zero_point) * scale, (long_max / scale + zero_point))
+    _long_type_info = torch.iinfo(torch.int32)
+    long_min = _long_type_info.min / adjustment
+    long_max = _long_type_info.max / adjustment
+    min_value = max(
+        (long_min - zero_point) * scale,
+        np.finfo(np.float32).min / 255.
+    )
+    max_value = min(
+        (long_max - zero_point) * scale,
+        np.finfo(np.float32).max / 255.
+    )
     return np.float32(min_value), np.float32(max_value)
 
 # This wrapper around `st.floats` checks the version of `hypothesis`, and if
@@ -90,8 +94,9 @@ def qparams(draw, dtypes=None, scale_min=None, scale_max=None,
     if dtypes is None:
         dtypes = _ALL_QINT_TYPES
     if not isinstance(dtypes, (list, tuple)):
-        dtypes = (dtypes,)
-    quantized_type = draw(st.sampled_from(dtypes))
+        quantized_type = dtypes
+    else:
+        quantized_type = draw(st.sampled_from(dtypes))
 
     _type_info = torch.iinfo(quantized_type)
     qmin, qmax = _type_info.min, _type_info.max
@@ -106,10 +111,12 @@ def qparams(draw, dtypes=None, scale_min=None, scale_max=None,
         zero_point = draw(st.integers(min_value=_zp_min, max_value=_zp_max))
 
     if scale_min is None:
-        scale_min = torch.finfo(torch.float).eps
+        scale_min = torch.finfo(torch.float32).eps
     if scale_max is None:
-        scale_max = torch.finfo(torch.float).max
-    scale = draw(_floats_wrapper(min_value=scale_min, max_value=scale_max, width=32))
+        scale_max = np.float32(torch.finfo(torch.float32).max / (qmax - qmin))
+    scale = draw(_floats_wrapper(min_value=scale_min, max_value=scale_max,
+                                 width=32, allow_nan=False,
+                                 allow_infinity=False))
 
     return scale, zero_point, quantized_type
 
@@ -163,20 +170,27 @@ def tensor(draw, shapes=None, elements=None, qparams=None):
         _shape = draw(shapes)
     else:
         _shape = draw(st.sampled_from(shapes))
+    # Case 1, no qparams
     if qparams is None:
         if elements is None:
-            elements = _floats_wrapper(-1e6, 1e6, allow_nan=False, width=32)
-        X = draw(stnp.arrays(dtype=np.float32, elements=elements, shape=_shape))
+            elements = _floats_wrapper(-1e6, 1e6, allow_infinity=False,
+                                       allow_nan=False, width=32)
+        X = draw(stnp.arrays(dtype=np.float32, elements=elements, shape=_shape,
+                             fill=st.nothing()))
         assume(not (np.isnan(X).any() or np.isinf(X).any()))
+        # Generate qparams here based on X.
         return X, None
+
+    # Case 2, qparams given
     qparams = draw(qparams)
     if elements is None:
         min_value, max_value = _get_valid_min_max(qparams)
         elements = _floats_wrapper(min_value, max_value, allow_infinity=False,
                                    allow_nan=False, width=32)
-    X = draw(stnp.arrays(dtype=np.float32, elements=elements, shape=_shape))
-    # Recompute the scale and zero_points according to the X statistics.
-    scale, zp = _calculate_dynamic_qparams(X, qparams[2])
+    arr_strategy = stnp.arrays(dtype=np.float32, elements=elements,
+                               shape=_shape, fill=st.nothing())
+    X = draw(arr_strategy)
+    scale, zp = qparams[:2]
     enforced_zp = _ENFORCED_ZERO_POINT.get(qparams[2], None)
     if enforced_zp is not None:
         zp = enforced_zp
@@ -190,8 +204,10 @@ def per_channel_tensor(draw, shapes=None, elements=None, qparams=None):
         _shape = draw(st.sampled_from(shapes))
     if qparams is None:
         if elements is None:
-            elements = st.floats(-1e6, 1e6, allow_nan=False)
-        X = draw(stnp.arrays(dtype=np.float32, elements=elements, shape=_shape))
+            elements = st.floats(-1e6, 1e6, allow_nan=False,
+                                 allow_infinity=False)
+        X = draw(stnp.arrays(dtype=np.float32, elements=elements, shape=_shape,
+                             fill=st.nothing()))
         assume(not (np.isnan(X).any() or np.isinf(X).any()))
         return X, None
     qparams = draw(qparams)
@@ -199,9 +215,10 @@ def per_channel_tensor(draw, shapes=None, elements=None, qparams=None):
         min_value, max_value = _get_valid_min_max(qparams)
         elements = st.floats(min_value, max_value, allow_infinity=False,
                              allow_nan=False)
-    X = draw(stnp.arrays(dtype=np.float32, elements=elements, shape=_shape))
+    X = draw(stnp.arrays(dtype=np.float32, elements=elements, shape=_shape,
+                         fill=st.nothing()))
     # Recompute the scale and zero_points according to the X statistics.
-    scale, zp = _calculate_dynamic_per_channel_qparams(X, qparams[2])
+    scale, zp = qparams[:2]
     enforced_zp = _ENFORCED_ZERO_POINT.get(qparams[2], None)
     if enforced_zp is not None:
         zp = enforced_zp

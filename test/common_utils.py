@@ -40,9 +40,7 @@ from torch._six import string_classes, inf
 import torch.backends.cudnn
 import torch.backends.mkl
 
-
 torch.backends.disable_global_flags()
-
 
 parser = argparse.ArgumentParser(add_help=False)
 parser.add_argument('--subprocess', action='store_true',
