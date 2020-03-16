@@ -15,9 +15,16 @@ from hypothesis import strategies as st
 import torch.testing._internal.hypothesis_utils as hu
 hu.assert_deadline_disabled()
 
-from torch.testing._internal.common_utils import TEST_WITH_UBSAN, TestCase, run_tests, IS_PPC, IS_MACOS
-from torch.testing._internal.common_quantized import _quantize, _dequantize, _calculate_dynamic_qparams, \
-    override_quantized_engine
+from torch.testing._internal.common_utils import (TEST_WITH_UBSAN,
+                                                  TestCase,
+                                                  run_tests,
+                                                  IS_PPC,
+                                                  IS_MACOS)
+from torch.testing._internal.common_quantized import (_quantize,
+                                                      _dequantize,
+                                                      _calculate_dynamic_qparams,
+                                                      override_quantized_engine,
+                                                      quantize)
 
 np_dtype = {
     torch.quint8 : np.uint8,
@@ -1422,6 +1429,66 @@ class TestQuantizedOps(TestCase):
                                      running_mean=mean, running_var=var, training=False, momentum=0, eps=eps)
             quantize_ref = torch.quantize_per_tensor(float_ref, Y_scale, Y_zero_point, dtype_x)
             self.assertEqual(qy.int_repr().numpy(), quantize_ref.int_repr().numpy())
+
+
+class TestStaticRNN(TestCase):
+
+    """Tests the static LSTM implementation."""
+    def test_lstm(self):
+        batch_size = 16
+        input_size = 16
+        hidden_size = 16
+        num_layers = 16
+        seq_len = 16
+        bias = True
+        bidirectional = True
+
+        num_directions = int(bidirectional) + 1
+
+        x = torch.randn(seq_len, batch_size, input_size)
+        h = torch.randn(num_layers * num_directions, batch_size, hidden_size)
+        c = torch.randn(num_layers * num_directions, batch_size, hidden_size)
+
+        qx = quantize(x, torch.quint8)
+        qh = quantize(h, torch.quint8)
+        qc = quantize(c, torch.qint32, scale=1e-6, zero_point=0)
+
+        dqx = qx.dequantize()
+        dqh = qh.dequantize()
+        dqc = qc.dequantize()
+
+        f_lstm = torch.nn.LSTM(input_size=input_size,
+                               hidden_size=hidden_size,
+                               num_layers=num_layers,
+                               bias=bias,
+                               batch_first=False,
+                               dropout=0.0,
+                               bidirectional=bidirectional)
+        flat_weights_names = f_lstm._flat_weights_names
+        flat_weights = f_lstm._flat_weights
+        q_lstm = torch.nn.quantized.LSTM(input_size=input_size,
+                                         hidden_size=hidden_size,
+                                         num_layers=num_layers,
+                                         bias=bias,
+                                         batch_first=False,
+                                         dropout=0.0,
+                                         bidirectional=bidirectional,
+                                         # Quantization parameters
+                                         flat_weights_names=flat_weights_names,
+                                         flat_weights=flat_weights,
+                                         weights_scale=None,
+                                         weights_zero_point=None)
+
+        f_out, (f_h, f_c) = f_lstm(dqx, (dqh, dqc))
+        q_out, (q_h, q_c) = q_lstm(qx, (qh, qc))
+
+        self.assertEqual(f_out, q_out.dequantize(), prec=0.2,
+                         message="Output not equal: {} vs. {}".format(f_out, q_out))
+        self.assertEqual(f_h, q_h.dequantize(), prec=0.3,
+                         message="H not equal: {} vs. {}".format(f_h, q_h))
+        self.assertEqual(f_c, q_c.dequantize(), prec=0.2,
+                         message="C not equal: {} vs. {}".format(f_c, q_c))
+
 
 @unittest.skipUnless('fbgemm' in torch.backends.quantized.supported_engines,
                      " Quantized operations require FBGEMM. FBGEMM is only optimized for CPUs"
