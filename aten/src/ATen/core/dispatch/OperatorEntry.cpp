@@ -13,7 +13,7 @@ namespace {
     }
   }
 
-  std::string listAllDispatchKeys(const ska::flat_hash_map<c10::optional<DispatchKey>, std::list<OperatorEntry::KernelSchemaPair>>& kernels) {
+  std::string listAllDispatchKeys(const ska::flat_hash_map<c10::optional<DispatchKey>, std::list<OperatorEntry::KernelEntry>>& kernels) {
     if (kernels.size() == 0) {
       return "";
     }
@@ -61,15 +61,16 @@ namespace {
 
 void OperatorEntry::registerSchema(FunctionSchema&& schema) {
   TORCH_INTERNAL_ASSERT(!schema_.has_value());
-  schema_ = std::move(schema);
-  dispatchTable_.registerSchema(*schema_);
   for (auto i = kernels_.begin(); i != kernels_.end(); ++i) {
     for (auto j = i->second.begin(); j != i->second.end(); ++j) {
       if (j->inferred_function_schema) {
-        checkSchema(name_, *schema_, *j->inferred_function_schema);
+        checkSchema(name_, schema, *j->inferred_function_schema);
       }
     }
   }
+  // NB: don't register schema until after we've checked everything!
+  schema_ = std::move(schema);
+  dispatchTable_.registerSchema(*schema_);
 }
 
 void OperatorEntry::deregisterSchema() {
@@ -78,10 +79,11 @@ void OperatorEntry::deregisterSchema() {
   dispatchTable_.deregisterSchema();
 }
 
-std::list<OperatorEntry::KernelSchemaPair>::iterator OperatorEntry::registerKernel(
+std::list<OperatorEntry::KernelEntry>::iterator OperatorEntry::registerKernel(
   c10::optional<DispatchKey> dispatch_key,
   KernelFunction kernel,
-  std::unique_ptr<FunctionSchema> inferred_function_schema
+  std::unique_ptr<FunctionSchema> inferred_function_schema,
+  std::string debug
 ) {
   std::unique_lock<std::mutex> lock(kernelsMutex_);
 
@@ -92,8 +94,8 @@ std::list<OperatorEntry::KernelSchemaPair>::iterator OperatorEntry::registerKern
   // Add the kernel to the kernels list,
   // possibly creating the list if this is the first kernel.
   auto& k = kernels_[dispatch_key];
-  k.emplace_front(std::move(kernel), std::move(inferred_function_schema));
-  std::list<OperatorEntry::KernelSchemaPair>::iterator inserted = k.begin();
+  k.emplace_front(std::move(kernel), std::move(inferred_function_schema), std::move(debug));
+  std::list<OperatorEntry::KernelEntry>::iterator inserted = k.begin();
   // update the dispatch table, i.e. re-establish the invariant
   // that the dispatch table points to the newest kernel
   updateDispatchTable_(dispatch_key);
@@ -102,7 +104,7 @@ std::list<OperatorEntry::KernelSchemaPair>::iterator OperatorEntry::registerKern
 
 void OperatorEntry::deregisterKernel_(
   c10::optional<DispatchKey> dispatch_key,
-  std::list<OperatorEntry::KernelSchemaPair>::iterator kernel
+  std::list<OperatorEntry::KernelEntry>::iterator kernel
 ) {
   std::unique_lock<std::mutex> lock(kernelsMutex_);
 
@@ -135,6 +137,55 @@ void OperatorEntry::updateDispatchTable_(c10::optional<DispatchKey> dispatch_key
       dispatchTable_.setCatchallKernel(k->second.front().kernel);
     }
   }
+}
+
+void OperatorEntry::checkInvariants() const {
+  if (schema_) {
+    TORCH_INTERNAL_ASSERT(schema_->operator_name() == name_);
+    dispatchTable_.dispatchKeyExtractor().checkInvariants(*schema_);
+  }
+  TORCH_INTERNAL_ASSERT(name_ == dispatchTable_.operatorName());
+  TORCH_INTERNAL_ASSERT(kernels_.find(DispatchKey::Undefined) == kernels_.end());
+  for (const auto& kv : kernels_) {
+    auto mb_dispatch_key = kv.first;
+    TORCH_INTERNAL_ASSERT(kv.second.size() > 0);
+    auto* kernel = mb_dispatch_key ? dispatchTable_.lookup(*mb_dispatch_key) : dispatchTable_.lookupCatchallKernel();
+    TORCH_INTERNAL_ASSERT(kv.second.front().kernel._equalsBoxedAndUnboxed(*kernel));
+  }
+}
+
+std::string OperatorEntry::dumpState() const {
+  std::ostringstream oss;
+  oss << "name: " << name_ << "\n";
+  if (schema_) {
+    oss << "schema: " << *schema_ << "\n";
+    oss << "alias analysis kind: " << toString(schema_->aliasAnalysis()) << (schema_->isDefaultAliasAnalysisKind() ? " (default)" : "") << "\n";
+  } else {
+    oss << "schema: (none)\n";
+  }
+  // Iterate over DispatchKey, not the flat hash map, so we have a stable order
+  auto print_key = [&](c10::optional<DispatchKey> k) {
+    auto it = kernels_.find(k);
+    if (it != kernels_.end()) {
+      int64_t i = 0;
+      for (const auto& jt : it->second) {
+        oss << (k ? toString(k) : "catchall")
+            << (i > 0 ? " (inactive)" : "")
+            << ": "
+            << jt.debug << " :: "
+            << toString(*jt.inferred_function_schema) << " [ " << jt.kernel.dumpState() << "]\n";
+        i++;
+      }
+    }
+  };
+  for (uint8_t i = 0; i < static_cast<uint8_t>(DispatchKey::NumDispatchKeys); i++) {
+    print_key(static_cast<DispatchKey>(i));
+  }
+  print_key(c10::nullopt);
+  // dispatch table is 100% specified by OperatorEntry; so if you want to check
+  // if it makes sense use checkInvariants
+  // oss << dispatchTable_.dumpState();
+  return oss.str();
 }
 
 }
