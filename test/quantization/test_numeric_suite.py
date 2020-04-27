@@ -1,5 +1,8 @@
+# torch
 import torch
 import torch.nn as nn
+
+# torch quantization
 import torch.nn.quantized as nnq
 from torch.quantization import (
     DeQuantStub,
@@ -16,12 +19,16 @@ from torch.quantization._numeric_suite import (
     compare_model_stub,
     compare_weights,
 )
+
+# Testing Utils
+from torch.testing._internal.common_utils import run_tests
 from torch.testing._internal.common_quantization import (
     AnnotatedConvBnReLUModel,
     AnnotatedConvModel,
     QuantizationTestCase,
 )
 
+# Standard library
 import unittest
 
 class SubModule(torch.nn.Module):
@@ -160,3 +167,6 @@ class TestEagerModeNumericSuite(QuantizationTestCase):
         self.assertTrue(isinstance(q_model.my_scalar_mul, Shadow))
         for k, v in ob_dict.items():
             self.assertTrue(v["float"].shape == v["quantized"].shape)
+
+if __name__ == '__main__':
+    run_tests()
