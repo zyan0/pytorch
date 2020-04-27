@@ -12,11 +12,112 @@ import torch
 import torch.nn as nn
 import torch.nn.quantized as nnq
 import torch.nn.quantized.dynamic as nnqd
+from torch.testing import FileCheck
 from torch.testing._internal.common_utils import TestCase
-from torch.quantization import QuantWrapper, QuantStub, DeQuantStub, \
-    default_qconfig, default_per_channel_qconfig, QConfig, default_observer, default_weight_observer, \
-    propagate_qconfig_, convert
+from torch.quantization import QuantWrapper, QuantStub, DeQuantStub, QConfig
+from torch.quantization import default_qconfig, default_per_channel_qconfig
+from torch.quantization import get_default_qconfig
+from torch.quantization import default_observer, default_weight_observer
+from torch.quantization import propagate_qconfig_, convert
+from torch.quantization._quantize_script import quantize_script
 from torch.quantization.default_mappings import DEFAULT_DYNAMIC_MODULE_MAPPING
+
+"""Test graph mode post training static quantization works
+   for individual ops end to end.
+   More info here: torch/csrc/jit/testing/file_check.h
+
+Args:
+    module: Quantizable module to generate a graph from or a quantized graph
+    data: Data to be tested against
+    check: List of arguments to FileCheck().check
+    check_not: List of arguments to FileCheck().check_not
+    check_count: List of arguments to FileCheck().check_count
+    ordered_checks: List of checks to run in order.
+        The list must have (TYPE, ARGS) format.
+            TYPE is any check that is accepted by the FileCheck()
+            ARGS is a valid argument to the specified TYPE
+    qengine: Quantization engine (default: fbgemm)
+
+Returns:
+    model: Quantized graph model
+    checker: `FileCheck` instance
+
+Note:
+    Arguments `check`, `check_not`, `check_count` are not ordered, and for every
+    entry in the argument list runs a new instance of the `FileCheck`.
+    If you must run the matching patterns in a specific order,
+    use the `ordered_check` argument.
+Note:
+    When providing a graph,
+
+Example:
+    # Checks if the module has linear, after that checks that linear is not
+    # followed by another linear.
+    _test_module_graph(M(),
+                       check='aten::linear',
+                       ordered_check=(('check', 'aten::linear'),
+                                     ('check_not', 'aten::linear')))
+"""
+def _test_module_graph(module, data=None, check=None, check_not=None,
+                      check_count=None, ordered_checks=None, qengine=None):
+    if qengine is None:
+        qengine = 'fbgemm'
+    assert qengine in ['fbgemm', 'qnnpack'], \
+        'Qengine must be one of (fbgemm, qnnpack)'
+
+    if isinstance(module, torch._C.Graph):
+        # If already a graph, just run the checks
+        model = None
+        model_graph = module
+        model_graph_count = module
+    elif isinstance(module, torch.jit.ScriptModule):
+        # Check if the module is already scripted
+        model = module
+    else:
+        qconfig_dict = {'': get_default_qconfig(qengine)}
+        model = torch.jit.script(module).eval()
+        model = quantize_script(model, qconfig_dict, test_only_eval_fn, [data],
+                                inplace=False)
+
+    # Check if data exists
+    if data is None:
+        if model is not None:
+            model_graph = model.graph
+    else:
+        *inputs, target = data[0]
+        # Make sure it runs
+        model(*inputs)
+        # We could use `graph_for(*input)` but it might break the `check_count`.
+        model_graph = model.graph_for(*inputs)
+        model_graph_count = model.graph
+
+    # Run the checks
+    if check is not None:
+        if not isinstance(check, (list, tuple)):
+            check = (check,)
+        for c in check:
+            FileCheck().check(c).run(model_graph)
+    if check_not is not None:
+        if not isinstance(check_not, (list, tuple)):
+            check_not = (check_not,)
+        for c in check_not:
+            FileCheck().check_not(c).run(model_graph)
+    if check_count is not None:
+        if not isinstance(check_count, (list, tuple)):
+            raise ValueError("`check_count` must be a list of lists")
+        if len(check_count) == 3 and isinstance(check_count[0], str):
+            check_count = (check_count,)  # tuple of iterables
+        for c in check_count:
+            FileCheck().check_count(*c).run(model_graph_count)
+    if ordered_checks is not None:
+        checker = FileCheck()
+        for check_type, check_args in ordered_checks:
+            if not isinstance(check_args, (list, tuple)):
+                check_args = (check_args,)
+            getattr(checker, check_type)(*check_args)
+        checker.run(model_graph)
+
+    return model
 
 def test_only_eval_fn(model, calib_data):
     r"""
