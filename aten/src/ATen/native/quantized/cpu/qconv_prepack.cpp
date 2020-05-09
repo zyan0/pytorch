@@ -9,10 +9,13 @@
 #include <ATen/native/quantized/cpu/qnnpack_utils.h>
 #include <ATen/quantized/Quantizer.h>
 
+#include "_common_utils.h"
+
 namespace caffe2 {
 
 #ifdef USE_FBGEMM
 // Required for cpp_custom_type_hack to work
+CAFFE_KNOWN_TYPE(PackedConvWeight<1>);
 CAFFE_KNOWN_TYPE(PackedConvWeight<2>);
 CAFFE_KNOWN_TYPE(PackedConvWeight<3>);
 #endif
@@ -77,6 +80,7 @@ class QConvPackWeightInt8 final {
     auto& ctx = at::globalContext();
 #ifdef USE_FBGEMM
     if (ctx.qEngine() == at::QEngine::FBGEMM) {
+      TORCH_CHECK(kSpatialDim != 1, "FPGEMM Doesn't support 1D conv prepack yet.");
       TORCH_CHECK(!transpose, "FBGEMM prepacking for conv_transpose is not"
                   "implemented yet")
       return fbgemm_conv_prepack(
@@ -87,9 +91,18 @@ class QConvPackWeightInt8 final {
 #ifdef USE_PYTORCH_QNNPACK
     if (ctx.qEngine() == at::QEngine::QNNPACK) {
       TORCH_CHECK(
-          kSpatialDim == 2,
-          "quantized::conv2d_prepack (qnnpack): QNNPACK only supports Conv2d "
-          "now.");
+          kSpatialDim == 1 || kSpatialDim == 2,
+          "quantized::conv_prepack (qnnpack): QNNPACK only supports Conv1d "
+          "and Conv2d now.");
+      if (kSpatialDim == 1) {
+        if (weight.dim() == 3) {
+          weight = weight.unsqueeze(_internal::kConv1dSqueezeDim + 2);
+        }
+        stride = _internal::MakeArgForConv1d(stride, 1);
+        input_padding = _internal::MakeArgForConv1d(input_padding, 0);
+        output_padding = _internal::MakeArgForConv1d(output_padding, 0);
+        dilation = _internal::MakeArgForConv1d(dilation, 1);
+      }
       return qnnpack_conv_prepack(weight, bias, stride, input_padding,
                                   output_padding, dilation, groups, transpose);
     }
@@ -351,13 +364,17 @@ class QConvPackWeightInt8 final {
 TORCH_LIBRARY_IMPL(quantized, QuantizedCPU, m) {
   // conv_prepack is deprecated, please use conv2d_prepack for 2D conv.
   m.impl("conv_prepack", QConvPackWeightInt8<2>::run_conv);
+  m.impl("conv1d_prepack", QConvPackWeightInt8<1>::run_conv);
   m.impl("conv2d_prepack", QConvPackWeightInt8<2>::run_conv);
   m.impl("conv3d_prepack", QConvPackWeightInt8<3>::run_conv);
+  m.impl("conv_transpose1d_prepack", QConvPackWeightInt8<1>::run_deconv);
   m.impl("conv_transpose2d_prepack", QConvPackWeightInt8<2>::run_deconv);
 }
 
 TORCH_LIBRARY_IMPL(_quantized, QuantizedCPU, m) {
+  m.impl("conv1d_prepack", QConvPackWeightInt8<1>::run_conv);
   m.impl("conv2d_prepack", QConvPackWeightInt8<2>::run_conv);
+  m.impl("conv_transpose1d_prepack", QConvPackWeightInt8<1>::run_deconv);
   m.impl("conv_transpose2d_prepack", QConvPackWeightInt8<2>::run_deconv);
 }
 
