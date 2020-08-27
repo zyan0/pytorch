@@ -1,5 +1,4 @@
 import os
-import platform
 import subprocess
 
 import conda.cli.python_api
@@ -50,10 +49,6 @@ SUB_ENVS = {
         ("BLAS=Eigen",) + GENERIC_ENV_VARS,
     ),
 }
-
-
-if platform.system() != "Linux":
-    raise OSError("This script expects to be run on a linux machine.")
 
 
 def conda_run(*args):
