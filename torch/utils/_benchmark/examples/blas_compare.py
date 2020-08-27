@@ -30,8 +30,8 @@ _BLAS_CONFIGS = (
     ("MKL (2020.2)", "blas_compare_mkl_2020_2", None),
     ("MKL (2020.1)", "blas_compare_mkl_2020_1", None),
     ("MKL (2020.1), MKL_DEBUG_CPU_TYPE=5", "blas_compare_mkl_2020_1", {"MKL_DEBUG_CPU_TYPE": "5"}),
-    ("MKL (2020.1)", "blas_compare_mkl_2020_0", None),
-    ("MKL (2020.1), MKL_DEBUG_CPU_TYPE=5", "blas_compare_mkl_2020_0", {"MKL_DEBUG_CPU_TYPE": "5"}),
+    ("MKL (2020.0)", "blas_compare_mkl_2020_0", None),
+    ("MKL (2020.0), MKL_DEBUG_CPU_TYPE=5", "blas_compare_mkl_2020_0", {"MKL_DEBUG_CPU_TYPE": "5"}),
     ("OpenBLAS", "blas_compare_openblas", None),
     ("BLIS", "blas_compare_blis", None),
     ("Eigen", "blas_compare_eigen", None),
@@ -160,9 +160,6 @@ def main():
     comparison.trim_significant_figures()
     comparison.colorize()
     comparison.print()
-
-    import pdb
-    pdb.set_trace()
 
 
 if __name__ == "__main__":
