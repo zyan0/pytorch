@@ -33,9 +33,11 @@ _BLAS_CONFIGS = (
     ("MKL (2020.0)", "blas_compare_mkl_2020_0", None),
     ("MKL (2020.0), MKL_DEBUG_CPU_TYPE=5", "blas_compare_mkl_2020_0", {"MKL_DEBUG_CPU_TYPE": "5"}),
     ("OpenBLAS", "blas_compare_openblas", None),
-    ("BLIS", "blas_compare_blis", None),
-    ("Eigen", "blas_compare_eigen", None),
+    # ("BLIS", "blas_compare_blis", None),
+    # ("Eigen", "blas_compare_eigen", None),
 )
+
+_EXCLUDE_LAPACK = ("BLIS", "Eigen")
 
 
 def fill_core_pool(n: int):
@@ -55,13 +57,18 @@ def fill_core_pool(n: int):
 def _subprocess_main(seed=0, num_threads=1, sub_label="N/A", result_file=None, env=None):
     torch.manual_seed(seed)
     results = []
-    for n in [32, 64, 128, 256, 512, 1024]:
-        for x_shape, y_shape, label_str in [((n, n), (n, n), ""), ((16, n), (n, n), " (Small A)"), ((n, n), (n, 16), " (Small B)")]:
+    for n in [4, 8, 16, 32, 64, 128, 256, 512, 1024, 7, 96, 150, 225]:
+        shapes = [
+            ((n, n), (n, n), "(n x n) x (n x n)"),
+            ((16, n), (n, n), "(16 x n) x (n x n)"),
+            ((n, n), (n, 16), "(n x n) x (n x 16)")
+        ]
+        for x_shape, y_shape, shape_str in shapes:
             t = Timer(
                 stmt="torch.mm(x, y)",
-                label=f"MatMul{label_str}",
+                label=f"torch.mm {shape_str}",
                 sub_label=sub_label,
-                description=f"({x_shape[0]}x{x_shape[1]}) X ({y_shape[0]}x{y_shape[1]})",
+                description=f"n = {n}",
                 env=env,
                 globals={
                     "x": torch.rand(x_shape),
@@ -70,6 +77,62 @@ def _subprocess_main(seed=0, num_threads=1, sub_label="N/A", result_file=None, e
                 num_threads=num_threads,
             ).blocked_autorange(min_run_time=_MIN_RUN_TIME)
             results.append(t)
+
+        if sub_label not in _EXCLUDE_LAPACK:
+            t = Timer(
+                stmt="torch.eig(x)",
+                label=f"torch.eig",
+                sub_label=sub_label,
+                description=f"n = {n}",
+                env=env,
+                globals={
+                    "x": torch.rand((n, n)),
+                },
+                num_threads=num_threads,
+            ).blocked_autorange(min_run_time=_MIN_RUN_TIME)
+            results.append(t)
+
+            # Sample until the Cholesky decomposition is non-singular.
+            for _ in range(100):
+                try:
+                    x_base = torch.rand((n, n)) / n ** 0.5
+                    x = torch.mm(x_base, x_base.t()) + 1e-2
+                    torch.cholesky(x)
+                    break
+                except RuntimeError:
+                    continue
+
+            t = Timer(
+                stmt="torch.cholesky(x)",
+                label=f"torch.cholesky",
+                sub_label=sub_label,
+                description=f"n = {n}",
+                env=env,
+                globals={
+                    "x": x,
+                },
+                num_threads=num_threads,
+            ).blocked_autorange(min_run_time=_MIN_RUN_TIME)
+            results.append(t)
+
+            shapes = [
+                ((n, n), "(n x n)"),
+                ((16, n), "(16 x n)"),
+                ((n, 16), "(n x 16)")
+            ]
+            for x_shape, shape_str in shapes:
+                t = Timer(
+                    stmt="torch.svd(x)",
+                    label=f"torch.svd {shape_str}",
+                    sub_label=sub_label,
+                    description=f"n = {n}",
+                    env=env,
+                    globals={
+                        "x": torch.rand(x_shape),
+                    },
+                    num_threads=num_threads,
+                ).blocked_autorange(min_run_time=_MIN_RUN_TIME)
+                results.append(t)
 
     if result_file is not None:
         with open(result_file, "wb") as f:
@@ -134,7 +197,7 @@ def main():
         workers = _WORKER_POOL.qsize()
 
         trials = []
-        for seed in range(3):
+        for seed in range(10):
             for sub_label, env, extra_env_vars in _BLAS_CONFIGS:
                 trials.append((seed, env, sub_label, extra_env_vars))
 
