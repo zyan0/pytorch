@@ -33,8 +33,8 @@ _BLAS_CONFIGS = (
     ("MKL (2020.0)", "blas_compare_mkl_2020_0", None),
     ("MKL (2020.0), MKL_DEBUG_CPU_TYPE=5", "blas_compare_mkl_2020_0", {"MKL_DEBUG_CPU_TYPE": "5"}),
     ("OpenBLAS", "blas_compare_openblas", None),
-    # ("BLIS", "blas_compare_blis", None),
-    # ("Eigen", "blas_compare_eigen", None),
+    ("BLIS", "blas_compare_blis", None),
+    ("Eigen", "blas_compare_eigen", None),
 )
 
 _EXCLUDE_LAPACK = ("BLIS", "Eigen")
