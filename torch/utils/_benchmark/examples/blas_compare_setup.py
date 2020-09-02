@@ -209,8 +209,8 @@ def prepare():
             "python setup.py clean && "
             "python setup.py install",
             shell=True,
-            # stdout=subprocess.PIPE,
-            # stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
 
 
