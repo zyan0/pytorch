@@ -27,6 +27,7 @@ atexit.register(clear_worker_pool)
 
 
 _BLAS_CONFIGS = (
+    ("MKL (2020.3)", "blas_compare_mkl_2020_3", None),
     ("MKL (2020.2)", "blas_compare_mkl_2020_2", None),
     ("MKL (2020.1)", "blas_compare_mkl_2020_1", None),
     ("MKL (2020.1), MKL_DEBUG_CPU_TYPE=5", "blas_compare_mkl_2020_1", {"MKL_DEBUG_CPU_TYPE": "5"}),
