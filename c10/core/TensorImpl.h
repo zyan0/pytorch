@@ -594,6 +594,26 @@ struct C10_API TensorImpl : public c10::intrusive_ptr_target {
    */
   const at::Tensor& grad() const;
 
+
+  /**
+   * Whether or not the imaginary part of the tensor should be negated
+   */
+  inline bool is_conj() const {
+    return key_set_.has(DispatchKey::Conjugate);
+  }
+
+  /**
+   * Set whether or not to take the conjugate of the tensor (flip the imaginary bit).
+   */
+  void set_conj(bool value) {
+    if (value) {
+      key_set_ = key_set_.add(DispatchKey::Conjugate);
+      TORCH_INTERNAL_ASSERT(isComplexType(typeMetaToScalarType(dtype())));
+    } else {
+      key_set_ = key_set_.remove(DispatchKey::Conjugate);
+    }
+  }
+
   /**
    * Return a typed data pointer to the actual data which this tensor refers to.
    * This checks that the requested type (from the template parameter) matches
@@ -1724,7 +1744,6 @@ protected:
   // The logic is that if Extend() or ReserveSpace() were ever called,
   // then subsequent Resize()s will not free up Storage.
   bool reserved_ = false;
-
 };
 
 // Note [TensorImpl size constraints]
