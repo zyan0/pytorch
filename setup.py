@@ -667,6 +667,13 @@ def configure_extension_build():
                 sources=[]),
         )
 
+    extensions.append(
+        Extension(
+            name='torch.utils._benchmark.utils.pybind_example',
+            sources=[],
+        )
+    )
+
     cmdclass = {
         'build_ext': build_ext,
         'clean': clean,

@@ -829,6 +829,14 @@ if(BUILD_CAFFE2)
   add_subdirectory(modules)
 endif()
 
+find_package(pybind11 REQUIRED)
+
+# Fails with:
+#   Unknown CMake command "pybind11_add_module".
+# pybind11_add_module(pybind_example ${PROJECT_SOURCE_DIR}/torch/utils/_benchmark/utils/pybind_example.cpp)
+
+add_library(pybind_example MODULE ${PROJECT_SOURCE_DIR}/torch/utils/_benchmark/utils/pybind_example.cpp)
+
 # ---[ Binaries
 # Binaries will be built after the Caffe2 main libraries and the modules
 # are built. For the binaries, they will be linked to the Caffe2 main
