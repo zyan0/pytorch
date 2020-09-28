@@ -23,7 +23,7 @@
 #include <torch/csrc/jit/runtime/profiling_record.h>
 #include <torch/csrc/jit/runtime/vararg_functions.h>
 
-#ifdef USE_DISTRIBUTED
+#ifdef USE_RPC
 #include <torch/csrc/distributed/autograd/context/container.h>
 using torch::distributed::autograd::DistAutogradContainer;
 #endif
@@ -267,7 +267,7 @@ void insertLastUses(Graph& g) {
 }
 
 inline int64_t getDistAutogradContextId() {
-#ifdef USE_DISTRIBUTED
+#ifdef USE_RPC
   return DistAutogradContainer::currentContextId();
 #else
   return 0;
@@ -318,6 +318,7 @@ struct CanEmitInline {
         // instruction stack
         // by the later BailOut in createBailoutBlock and its jf_index
         // will become invalid.
+        v->node()->kind() != prim::TensorExprGroup &&
         v->node()->kind() != prim::CudaFusionGroup &&
         v->node()->kind() != prim::FusionGroup &&
         v->node()->kind() != prim::BailOut && v->uses().size() == 1 &&
@@ -754,7 +755,14 @@ struct CodeImpl {
   void emitProfile(Node* node) {
     emitLoadInputs(node->inputs());
     insertInstruction(PROFILE_OP, profile_function_table_.size());
-    profile_function_table_.push_back(node->cast<ProfileOp>()->getCallback());
+    if (node->cast<ProfileOp>()) {
+      profile_function_table_.push_back(node->cast<ProfileOp>()->getCallback());
+    } else if (node->cast<ProfileOptionalOp>()) {
+      profile_function_table_.push_back(
+          node->cast<ProfileOptionalOp>()->getCallback());
+    } else {
+      TORCH_INTERNAL_ASSERT(false);
+    }
   }
 
   void emitGetAttr(Node* node) {
@@ -902,6 +910,7 @@ struct CodeImpl {
       case prim::BailOut:
         emitBailOut(node);
         break;
+      case prim::profile_optional:
       case prim::profile:
         emitProfile(node);
         break;
@@ -1370,7 +1379,6 @@ struct InterpreterStateImpl : c10::intrusive_ptr_target {
             // Check every input's shape against profiled (expected) shape.
             for (i = 0; i < num_inputs; i++) {
               auto& input = peek(stack, i, num_inputs);
-              TORCH_INTERNAL_ASSERT(input.isTensor());
               auto t = input.toTensor();
               const TypePtr& expected = af.types[inst.X + i];
               auto expected_type = expected->cast<TensorType>();
@@ -1563,7 +1571,7 @@ struct InterpreterStateImpl : c10::intrusive_ptr_target {
     formatStackTrace(ss);
     ss << "RuntimeError: " << msg << "\n";
     if (future_) {
-      future_->setError(Future::FutureError(ss.str()));
+      future_->setError(std::make_exception_ptr(Future::FutureError(ss.str())));
     } else if (is_jit_exception) {
       throw JITException(ss.str());
     } else {
@@ -1682,7 +1690,7 @@ InterpreterState::InterpreterState(
     : pImpl(std::move(pImpl_)) {}
 
 void InterpreterContinuation::operator()() {
-#ifdef USE_DISTRIBUTED
+#ifdef USE_RPC
   auto prev_dist_id = DistAutogradContainer::currentContextId();
   DistAutogradContainer::forceCurrentContextId(dist_autograd_context_id_);
 #endif
@@ -1692,7 +1700,7 @@ void InterpreterContinuation::operator()() {
   } else {
     state.runAsync(stack);
   }
-#ifdef USE_DISTRIBUTED
+#ifdef USE_RPC
   DistAutogradContainer::forceCurrentContextId(prev_dist_id);
 #endif
 }
