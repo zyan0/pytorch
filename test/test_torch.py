@@ -6026,8 +6026,6 @@ class TestTorchDeviceType(TestCase):
             torch.pow(m1, 1, out=out)
             self.assertEqual(out, m1)
 
-    # See https://github.com/pytorch/pytorch/issues/45403 for CUDA skip
-    @skipCUDAIf(True, "Throws illegal memory access errors on some platforms.")
     @skipCUDAIf(
         _get_torch_cuda_version() < [10, 0] and not TEST_MAGMA,
         "On cuda 9.2, torch.inverse relies on magma"
