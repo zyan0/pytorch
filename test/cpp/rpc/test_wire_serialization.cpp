@@ -93,6 +93,44 @@ TEST(WireSerialize, Errors) {
       "failed bounds");
 }
 
+TEST(WireSerialize, MessageToIValueTupleConversion) {
+  std::string strPayload = "hi";
+  std::vector<char> payloadVec(strPayload.begin(), strPayload.end());
+  std::vector<at::Tensor> tensors = {torch::randn({5, 5}),
+                                     torch::randn({10, 10})};
+  auto msgType = torch::distributed::rpc::MessageType::SCRIPT_CALL;
+  auto msgId = 1;
+  // Create message and convert to tuple
+  torch::distributed::rpc::Message m(
+      std::move(payloadVec), std::move(tensors), msgType, msgId);
+
+  at::IValue messageTuple = m.toIValueTuple();
+  // Convert tuple back to message
+  auto convertedMsg =
+      torch::distributed::rpc::Message::fromIValueTuple(messageTuple);
+
+  // Validate convertedMsg.
+  // Validate message payload
+  std::vector<char> convertedPayload = convertedMsg.payload();
+  std::string convertedStrPayload(
+      convertedPayload.begin(), convertedPayload.end());
+  auto expectedStrPayload = std::string(m.payload().begin(), m.payload().end());
+  EXPECT_EQ(convertedStrPayload, expectedStrPayload);
+  // Validate message tensors
+  std::vector<at::Tensor> convertedTensors = convertedMsg.tensors();
+  std::vector<at::Tensor> expectedTensors = m.tensors();
+  EXPECT_EQ(convertedTensors.size(), expectedTensors.size());
+  for (int i = 0; i < convertedTensors.size(); ++i) {
+    EXPECT_TRUE(torch::equal(convertedTensors[i], expectedTensors[i]));
+  }
+  // Validate message type
+  torch::distributed::rpc::MessageType convertedType = convertedMsg.type();
+  EXPECT_EQ(m.type(), convertedType);
+  // Validate message id
+  int64_t convertedId = convertedMsg.id();
+  EXPECT_EQ(convertedId, m.id());
+}
+
 // Enable this once JIT Pickler supports sparse tensors.
 TEST(WireSerialize, DISABLED_Sparse) {
   at::Tensor main = at::empty({2, 3}, at::dtype<float>().layout(at::kSparse));
