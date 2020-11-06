@@ -300,6 +300,41 @@ TEST(VulkanAPITest, empty) {
       at::empty({1, 17, 41, 53}, at::device(at::kVulkan).dtype(at::kFloat)));
 }
 
+TEST(VulkanAPITest, cat) {
+  auto t_in0 =
+      at::rand({1, 1, 3, 3}, at::TensorOptions(at::kCPU).dtype(at::kFloat));
+  auto t_in1 =
+      at::rand({1, 2, 3, 3}, at::TensorOptions(at::kCPU).dtype(at::kFloat));
+  auto t_in2 =
+      at::rand({1, 5, 3, 3}, at::TensorOptions(at::kCPU).dtype(at::kFloat));
+
+  auto t_out_expected = at::cat({t_in0, t_in1, t_in2}, 1);
+  auto tv_out = at::cat({t_in0.vulkan(), t_in1.vulkan(), t_in2.vulkan()}, 1);
+  auto t_out = tv_out.cpu();
+
+  const auto check = almostEqual(t_out, t_out_expected);
+  if (!check) {
+    std::cout << "expected:" << t_out_expected << std::endl;
+    std::cout << "got:" << t_out << std::endl;
+  }
+  ASSERT_TRUE(check);
+}
+
+TEST(VulkanTest, unsqueeze) {
+  auto t_in =
+      at::rand({1, 2, 2}, at::TensorOptions(at::kCPU).dtype(at::kFloat));
+  auto tv_in = t_in.vulkan();
+
+  auto t_out_expected = t_in.unsqueeze(1);
+  auto t_out = tv_in.unsqueeze(1);
+  const auto check = almostEqual(t_out.cpu(), t_out_expected);
+  if (!check) {
+    std::cout << "expected:" << t_out_expected << std::endl;
+    std::cout << "got:" << t_out << std::endl;
+  }
+  ASSERT_TRUE(check);
+}
+
 } // namespace
 
 #endif /* USE_VULKAN_API */
