@@ -220,16 +220,10 @@ def main():
 
         print("Checking configuration:")
         check_run = subprocess.run(
-            # Shameless abuse of `python -c ...`
             f"source activate {env_path} && "
             "python -c \""
             "import torch;"
-            "from torch.utils.benchmark import Timer;"
-            "print(torch.__config__.show());"
-            "setup = 'x=torch.ones((128, 128));y=torch.ones((128, 128))';"
-            "counts = Timer('torch.mm(x, y)', setup).collect_callgrind(collect_baseline=False);"
-            "stats = counts.as_standardized().stats(inclusive=True);"
-            "print(stats.filter(lambda l: 'blas' in l.lower()))\"",
+            "print(torch.__config__.show())\"",
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -248,11 +242,36 @@ def main():
             if "BLAS" in e:
                 assert e in check_run_stdout, f"PyTorch build did not respect `BLAS=...`: {e}"
 
-        for s in env_spec.expected_blas_symbols:
-            assert s in check_run_stdout
-
         if env_spec.expected_mkl_version is not None:
             assert f"- Intel(R) Math Kernel Library Version {env_spec.expected_mkl_version}" in check_run_stdout
+
+        if env_spec.expected_blas_symbols:
+            check_run = subprocess.run(
+                # Shameless abuse of `python -c ...`
+                f"source activate {env_path} && "
+                "conda install -y valgrind -c conda-forge && "
+                "python -c \""
+                "import torch;"
+                "from torch.utils.benchmark import Timer;"
+                "setup = 'x=torch.ones((128, 128));y=torch.ones((128, 128))';"
+                "counts = Timer('torch.mm(x, y)', setup).collect_callgrind(collect_baseline=False);"
+                "stats = counts.as_standardized().stats(inclusive=True);"
+                "print(stats.filter(lambda l: 'blas' in l.lower()))\"",
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                executable=SHELL,
+            )
+            if check_run.returncode:
+                raise OSError(
+                    "PyTorch check failed:\n"
+                    f"  stdout: {check_run.stdout.decode('utf-8')}\n"
+                    f"  stderr: {check_run.stderr.decode('utf-8')}"
+                )
+            check_run_stdout = check_run.stdout.decode('utf-8')
+
+            for s in env_spec.expected_blas_symbols:
+                assert s in check_run_stdout
 
         print(f"Build complete: {env_name}")
 

@@ -111,7 +111,7 @@ def run_subprocess(args):
             "PATH": os.getenv("PATH"),
             "PYTHONPATH": os.getenv("PYTHONPATH") or "",
 
-            # NumPy
+            # NumPy (and hacky BLIS integration.)
             "OMP_NUM_THREADS": str(num_threads),
             "MKL_NUM_THREADS": str(num_threads),
             "NUMEXPR_NUM_THREADS": str(num_threads),
