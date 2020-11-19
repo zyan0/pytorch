@@ -48,9 +48,6 @@ SubEnvSpec = collections.namedtuple(
         "generic_installs",
         "special_installs",
         "environment_variables",
-
-        # Validate install.
-        "expected_blas_symbols",
         "expected_mkl_version",
     ))
 
@@ -60,7 +57,6 @@ SUB_ENVS = {
         generic_installs=(),
         special_installs=("intel", ("mkl=2020.3", "mkl-include=2020.3")),
         environment_variables=("BLAS=MKL",) + GENERIC_ENV_VARS,
-        expected_blas_symbols=("mkl_blas_sgemm",),
         expected_mkl_version="2020.0.3",
     ),
 
@@ -68,7 +64,6 @@ SUB_ENVS = {
         generic_installs=(),
         special_installs=("intel", ("mkl=2020.0", "mkl-include=2020.0")),
         environment_variables=("BLAS=MKL",) + GENERIC_ENV_VARS,
-        expected_blas_symbols=("mkl_blas_sgemm",),
         expected_mkl_version="2020.0.0",
     ),
 
@@ -76,7 +71,6 @@ SUB_ENVS = {
         generic_installs=("openblas",),
         special_installs=(),
         environment_variables=("BLAS=OpenBLAS",) + GENERIC_ENV_VARS,
-        expected_blas_symbols=("exec_blas",),
         expected_mkl_version=None,
     ),
 
@@ -94,7 +88,6 @@ SUB_ENVS = {
         environment_variables=(
             "BLAS=blis", f"BLIS_HOME={BLIS_HOME}", "WITH_BLAS=blis",
             "USE_MKLDNN_CBLAS=ON") + GENERIC_ENV_VARS,
-        expected_blas_symbols=(),  # BLIS breaks valgrind
         expected_mkl_version=None,
     )
 }
@@ -243,34 +236,6 @@ def main():
 
         if env_spec.expected_mkl_version is not None:
             assert f"- Intel(R) Math Kernel Library Version {env_spec.expected_mkl_version}" in check_run_stdout
-
-        if env_spec.expected_blas_symbols:
-            check_run = subprocess.run(
-                # Shameless abuse of `python -c ...`
-                f"source activate {env_path} && "
-                "conda install -y valgrind -c conda-forge && "
-                "python -c \""
-                "import torch;"
-                "from torch.utils.benchmark import Timer;"
-                "setup = 'x=torch.ones((128, 128));y=torch.ones((128, 128))';"
-                "counts = Timer('torch.mm(x, y)', setup).collect_callgrind(collect_baseline=False);"
-                "stats = counts.as_standardized().stats(inclusive=True);"
-                "print(stats.filter(lambda l: 'blas' in l.lower()))\"",
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                executable=SHELL,
-            )
-            if check_run.returncode:
-                raise OSError(
-                    "PyTorch check failed:\n"
-                    f"  stdout: {check_run.stdout.decode('utf-8')}\n"
-                    f"  stderr: {check_run.stderr.decode('utf-8')}"
-                )
-            check_run_stdout = check_run.stdout.decode('utf-8')
-
-            for s in env_spec.expected_blas_symbols:
-                assert s in check_run_stdout
 
         print(f"Build complete: {env_name}")
 
