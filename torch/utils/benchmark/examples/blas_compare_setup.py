@@ -56,29 +56,29 @@ SubEnvSpec = collections.namedtuple(
 
 
 SUB_ENVS = {
-    # MKL_2020_3: SubEnvSpec(
-    #     generic_installs=(),
-    #     special_installs=("intel", ("mkl=2020.3", "mkl-include=2020.3")),
-    #     environment_variables=("BLAS=MKL",) + GENERIC_ENV_VARS,
-    #     expected_blas_symbols=("mkl_blas_sgemm",),
-    #     expected_mkl_version="2020.0.3",
-    # ),
+    MKL_2020_3: SubEnvSpec(
+        generic_installs=(),
+        special_installs=("intel", ("mkl=2020.3", "mkl-include=2020.3")),
+        environment_variables=("BLAS=MKL",) + GENERIC_ENV_VARS,
+        expected_blas_symbols=("mkl_blas_sgemm",),
+        expected_mkl_version="2020.0.3",
+    ),
 
-    # MKL_2020_0: SubEnvSpec(
-    #     generic_installs=(),
-    #     special_installs=("intel", ("mkl=2020.0", "mkl-include=2020.0")),
-    #     environment_variables=("BLAS=MKL",) + GENERIC_ENV_VARS,
-    #     expected_blas_symbols=("mkl_blas_sgemm",),
-    #     expected_mkl_version="2020.0.0",
-    # ),
+    MKL_2020_0: SubEnvSpec(
+        generic_installs=(),
+        special_installs=("intel", ("mkl=2020.0", "mkl-include=2020.0")),
+        environment_variables=("BLAS=MKL",) + GENERIC_ENV_VARS,
+        expected_blas_symbols=("mkl_blas_sgemm",),
+        expected_mkl_version="2020.0.0",
+    ),
 
-    # OPEN_BLAS: SubEnvSpec(
-    #     generic_installs=("openblas",),
-    #     special_installs=(),
-    #     environment_variables=("BLAS=OpenBLAS",) + GENERIC_ENV_VARS,
-    #     expected_blas_symbols=("exec_blas",),
-    #     expected_mkl_version=None,
-    # ),
+    OPEN_BLAS: SubEnvSpec(
+        generic_installs=("openblas",),
+        special_installs=(),
+        environment_variables=("BLAS=OpenBLAS",) + GENERIC_ENV_VARS,
+        expected_blas_symbols=("exec_blas",),
+        expected_mkl_version=None,
+    ),
 
     # EIGEN: SubEnvSpec(
     #     generic_installs=(),
@@ -87,15 +87,14 @@ SUB_ENVS = {
     #     expected_blas_symbols=(),
     # ),
 
+    # Based on: https://github.com/ROCmSoftwarePlatform/pytorch/blob/a2d0d61e1d6ce60e0d185b5feacb05a9fe3ea855/docker/pytorch/cpu-only/Dockerfile
     BLIS: SubEnvSpec(
         generic_installs=("nomkl",),
         special_installs=(),
         environment_variables=(
             "BLAS=blis", f"BLIS_HOME={BLIS_HOME}", "WITH_BLAS=blis",
             "USE_MKLDNN_CBLAS=ON") + GENERIC_ENV_VARS,
-
-        # BLIS breaks valgrind
-        expected_blas_symbols=(),
+        expected_blas_symbols=(),  # BLIS breaks valgrind
         expected_mkl_version=None,
     )
 }
@@ -239,7 +238,7 @@ def main():
         print(check_run_stdout)
 
         for e in env_spec.environment_variables:
-            if "BLAS" in e:
+            if e.startswith("BLAS="):
                 assert e in check_run_stdout, f"PyTorch build did not respect `BLAS=...`: {e}"
 
         if env_spec.expected_mkl_version is not None:
