@@ -130,7 +130,8 @@ def run_subprocess(args):
             f"--DETAIL_env {env}",
             env=env_vars,
             stdout=subprocess.PIPE,
-            shell=True
+            shell=True,
+            executable=blas_compare_setup.SHELL,
         )
 
         with open(result_file, "rb") as f:
@@ -197,7 +198,8 @@ def main():
         f"source activate {env_path} && "
         f"python {os.path.abspath(__file__)} "
         "--DETAIL_in_compare",
-        shell=True
+        shell=True,
+        executable=blas_compare_setup.SHELL,
     )
 
 
