@@ -12,6 +12,9 @@ except ImportError:
     # but that's fine as it only wants the constants.
     pass
 
+# /usr/bin/sh doesn't support `source`
+SHELL = "/bin/bash"
+
 
 WORKING_ROOT = "/tmp/pytorch_blas_compare_environments"
 MKL_2020_3 = "mkl_2020_3"
@@ -89,7 +92,7 @@ SUB_ENVS = {
         special_installs=(),
         environment_variables=(
             "BLAS=blis", f"BLIS_HOME={BLIS_HOME}", "WITH_BLAS=blis",
-            USE_MKLDNN_CBLAS=ON) + GENERIC_ENV_VARS,
+            "USE_MKLDNN_CBLAS=ON") + GENERIC_ENV_VARS,
 
         # BLIS breaks valgrind
         expected_blas_symbols=(),
@@ -141,6 +144,7 @@ def main():
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            executable=SHELL,
         )
         if base_source.returncode:
             raise OSError(
@@ -175,6 +179,7 @@ def main():
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                executable=SHELL,
             )
             if env_set.returncode:
                 raise OSError(
@@ -189,6 +194,7 @@ def main():
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                executable=SHELL,
             ).stdout.decode("utf-8").strip().splitlines()
             for e in env_spec.environment_variables:
                 assert e in actual_env_vars, f"{e} not in envs"
@@ -203,6 +209,7 @@ def main():
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            executable=SHELL,
         )
 
         print("Checking configuration:")
@@ -220,6 +227,7 @@ def main():
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            executable=SHELL,
         )
         if check_run.returncode:
             raise OSError(
