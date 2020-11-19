@@ -1,3 +1,14 @@
+SET(BLIS_INCLUDE_SEARCH_PATHS
+ /usr/include
+ /usr/include/blis
+ /usr/local/include
+ /usr/local/include/blis
+ /usr/local/opt/blis/include
+ /opt/blis/include
+ $ENV{BLIS_HOME}
+ $ENV{BLIS_HOME}/include
+)
+
 SET(BLIS_LIB_SEARCH_PATHS
  /lib
  /lib/blis
@@ -40,9 +51,7 @@ IF (BLIS_FOUND)
                 MESSAGE(STATUS "Found BLIS include: ${BLIS_INCLUDE_DIR}")
         ENDIF (NOT BLIS_FIND_QUIETLY)
 ELSE (BLIS_FOUND)
-        IF (BLIS_FIND_REQUIRED)
-                MESSAGE(FATAL_ERROR "Could not find BLIS")
-        ENDIF (BLIS_FIND_REQUIRED)
+        MESSAGE(FATAL_ERROR "Could not find BLIS")
 ENDIF (BLIS_FOUND)
 
 MARK_AS_ADVANCED(

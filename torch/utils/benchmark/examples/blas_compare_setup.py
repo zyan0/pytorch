@@ -211,6 +211,12 @@ def main():
             stderr=subprocess.PIPE,
             executable=SHELL,
         )
+        if build_run.returncode:
+            raise OSError(
+                "Failed build PyTorch:\n"
+                f"  stdout: {build_run.stdout.decode('utf-8')}\n"
+                f"  stderr: {build_run.stderr.decode('utf-8')}"
+            )
 
         print("Checking configuration:")
         check_run = subprocess.run(
@@ -231,7 +237,7 @@ def main():
         )
         if check_run.returncode:
             raise OSError(
-                "Failed to set environment variables:\n"
+                "PyTorch check failed:\n"
                 f"  stdout: {check_run.stdout.decode('utf-8')}\n"
                 f"  stderr: {check_run.stderr.decode('utf-8')}"
             )
