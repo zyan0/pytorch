@@ -2,6 +2,7 @@ import collections
 import os
 import shutil
 import subprocess
+import tarfile
 
 try:
     import conda.cli.python_api
@@ -17,6 +18,7 @@ MKL_2020_3 = "mkl_2020_3"
 MKL_2020_0 = "mkl_2020_0"
 OPEN_BLAS = "open_blas"
 EIGEN = "eigen"
+BLIS = "blis"
 
 
 GENERIC_ENV_VARS = ("USE_CUDA=0", "USE_ROCM=0")
@@ -32,6 +34,12 @@ BASE_PKG_DEPS = (
 )
 
 
+# AOCL BLIS is not on pip/conda, so it must be
+# downloaded and copied to the test machine.
+RAW_BLIS_LOCATION = "/tmp/aocl-blis-linux-aocc-2.2-4.tar.gz"
+BLIS_HOME = os.path.join(WORKING_ROOT, "amd-blis")
+
+
 SubEnvSpec = collections.namedtuple(
     "SubEnvSpec", (
         "generic_installs",
@@ -45,29 +53,29 @@ SubEnvSpec = collections.namedtuple(
 
 
 SUB_ENVS = {
-    MKL_2020_3: SubEnvSpec(
-        generic_installs=(),
-        special_installs=("intel", ("mkl=2020.3", "mkl-include=2020.3")),
-        environment_variables=("BLAS=MKL",) + GENERIC_ENV_VARS,
-        expected_blas_symbols=("mkl_blas_sgemm",),
-        expected_mkl_version="2020.0.3",
-    ),
+    # MKL_2020_3: SubEnvSpec(
+    #     generic_installs=(),
+    #     special_installs=("intel", ("mkl=2020.3", "mkl-include=2020.3")),
+    #     environment_variables=("BLAS=MKL",) + GENERIC_ENV_VARS,
+    #     expected_blas_symbols=("mkl_blas_sgemm",),
+    #     expected_mkl_version="2020.0.3",
+    # ),
 
-    MKL_2020_0: SubEnvSpec(
-        generic_installs=(),
-        special_installs=("intel", ("mkl=2020.0", "mkl-include=2020.0")),
-        environment_variables=("BLAS=MKL",) + GENERIC_ENV_VARS,
-        expected_blas_symbols=("mkl_blas_sgemm",),
-        expected_mkl_version="2020.0.0",
-    ),
+    # MKL_2020_0: SubEnvSpec(
+    #     generic_installs=(),
+    #     special_installs=("intel", ("mkl=2020.0", "mkl-include=2020.0")),
+    #     environment_variables=("BLAS=MKL",) + GENERIC_ENV_VARS,
+    #     expected_blas_symbols=("mkl_blas_sgemm",),
+    #     expected_mkl_version="2020.0.0",
+    # ),
 
-    OPEN_BLAS: SubEnvSpec(
-        generic_installs=("openblas",),
-        special_installs=(),
-        environment_variables=("BLAS=OpenBLAS",) + GENERIC_ENV_VARS,
-        expected_blas_symbols=("exec_blas",),
-        expected_mkl_version=None,
-    ),
+    # OPEN_BLAS: SubEnvSpec(
+    #     generic_installs=("openblas",),
+    #     special_installs=(),
+    #     environment_variables=("BLAS=OpenBLAS",) + GENERIC_ENV_VARS,
+    #     expected_blas_symbols=("exec_blas",),
+    #     expected_mkl_version=None,
+    # ),
 
     # EIGEN: SubEnvSpec(
     #     generic_installs=(),
@@ -75,6 +83,18 @@ SUB_ENVS = {
     #     environment_variables=("BLAS=Eigen",) + GENERIC_ENV_VARS,
     #     expected_blas_symbols=(),
     # ),
+
+    BLIS: SubEnvSpec(
+        generic_installs=("nomkl",),
+        special_installs=(),
+        environment_variables=(
+            "BLAS=blis", f"BLIS_HOME={BLIS_HOME}", "WITH_BLAS=blis",
+            USE_MKLDNN_CBLAS=ON) + GENERIC_ENV_VARS,
+
+        # BLIS breaks valgrind
+        expected_blas_symbols=(),
+        expected_mkl_version=None,
+    )
 }
 
 
@@ -93,6 +113,12 @@ def main():
         shutil.rmtree(WORKING_ROOT)
     os.makedirs(WORKING_ROOT)
 
+    if BLIS in SUB_ENVS and not os.path.exists(RAW_BLIS_LOCATION):
+        raise ValueError(f"Expected BLIS at {RAW_BLIS_LOCATION}")
+    with tarfile.open(RAW_BLIS_LOCATION) as f:
+        f.extractall(WORKING_ROOT)
+    assert os.path.exists(BLIS_HOME)
+
     git_root = subprocess.check_output(
         "git rev-parse --show-toplevel",
         shell=True,
@@ -106,7 +132,7 @@ def main():
             conda_commands.CREATE,
             "--no-default-packages",
             "--prefix", env_path,
-            "python=3",
+            "python=3.8",
         )
 
         print("Testing that env can be activated:")
