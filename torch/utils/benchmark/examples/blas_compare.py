@@ -16,17 +16,18 @@ import time
 import blas_compare_setup
 
 
-MIN_RUN_TIME = 1
+MIN_RUN_TIME = 5
 NUM_REPLICATES = 20
 NUM_THREAD_SETTINGS = (1, 2, 4)
 RESULT_FILE = os.path.join(blas_compare_setup.WORKING_ROOT, "blas_results.pkl")
 SCRATCH_DIR = os.path.join(blas_compare_setup.WORKING_ROOT, "scratch")
 
-
 BLAS_CONFIGS = (
     ("MKL (2020.3)", blas_compare_setup.MKL_2020_3, None),
     ("MKL (2020.0)", blas_compare_setup.MKL_2020_0, None),
-    ("OpenBLAS", blas_compare_setup.OPEN_BLAS, None)
+    ("MKL (2020.0, MKL_DEBUG_CPU_TYPE=5)", blas_compare_setup.MKL_2020_0, {"MKL_DEBUG_CPU_TYPE": "5"}),
+    ("OpenBLAS", blas_compare_setup.OPEN_BLAS, None),
+    ("BLIS", blas_compare_setup.BLIS, None),
 )
 
 
