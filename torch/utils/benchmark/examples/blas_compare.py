@@ -17,7 +17,7 @@ import blas_compare_setup
 
 
 MIN_RUN_TIME = 5
-NUM_REPLICATES = 20
+NUM_REPLICATES = 100
 NUM_THREAD_SETTINGS = (1, 2, 4)
 RESULT_FILE = os.path.join(blas_compare_setup.WORKING_ROOT, "blas_results.pkl")
 SCRATCH_DIR = os.path.join(blas_compare_setup.WORKING_ROOT, "scratch")
@@ -71,7 +71,7 @@ def _subprocess_main(seed=0, num_threads=1, sub_label="N/A", result_file=None, e
 
     torch.manual_seed(seed)
     results = []
-    for n in [4, 8, 16, 32, 64, 128, 256, 512, 1024, 7, 96, 150, 225]:
+    for n in [32, 128, 512, 1024, 2048]:
         dtypes = (("Single", torch.float32), ("Double", torch.float64))
         shapes = (
             # Square MatMul
