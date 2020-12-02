@@ -93,8 +93,19 @@ def get_compat_bindings() -> CallgrindModuleType:
 
 
 def _compile_template(stmt: str, setup: str, src: str, is_standalone: bool) -> Any:
+    include_lines, setup_lines, in_include_section = [], [], True
+    for l in setup.splitlines(keepends=False):
+        in_include_section = in_include_section and (l.startswith("#include") or not l)
+        if in_include_section:
+            include_lines.append(l)
+        else:
+            if l.startswith("#include"):
+                raise ValueError("`#include` statements must appear at the start of `setup`")
+            setup_lines.append(l)
+
     for before, after, indentation in (
-        ("// SETUP_TEMPLATE_LOCATION", setup, 4),
+        ("// EXTRA_INCLUDES", "\n".join(include_lines), 0),
+        ("// SETUP_TEMPLATE_LOCATION", "\n".join(setup_lines), 4),
         ("// STMT_TEMPLATE_LOCATION", stmt, 8)
     ):
         # C++ doesn't care about indentation so this code isn't load

@@ -1,7 +1,8 @@
 /* C++ template for Timer.timeit
 
 This template will be consumed by `cpp_jit.py`, and will replace:
-    `SETUP_TEMPLATE_LOCATION`
+    `EXTRA_INCLUDES`,
+    `SETUP_TEMPLATE_LOCATION`,
       and
     `STMT_TEMPLATE_LOCATION`
 sections with user provided statements.
@@ -12,7 +13,12 @@ sections with user provided statements.
 #include <torch/extension.h>
 
 
+// EXTRA_INCLUDES
+
+
 double timeit(int n) {
+    pybind11::gil_scoped_release no_gil;
+
     // Setup
     // SETUP_TEMPLATE_LOCATION
 

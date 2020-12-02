@@ -2,6 +2,7 @@
 import enum
 import timeit
 import textwrap
+import threading
 from typing import Any, Callable, Dict, List, NoReturn, Optional, Type, Union
 
 import numpy as np
@@ -51,13 +52,15 @@ class CPPTimer:
         self._stmt: str = textwrap.dedent(stmt)
         self._setup: str = textwrap.dedent(setup)
         self._timeit_module: Optional[TimeitModuleType] = None
+        self._compile_lock: threading.Lock = threading.Lock()
 
     def timeit(self, number: int) -> float:
-        if self._timeit_module is None:
-            self._timeit_module = cpp_jit.compile_timeit_template(
-                self._stmt,
-                self._setup,
-            )
+        with self._compile_lock:
+            if self._timeit_module is None:
+                self._timeit_module = cpp_jit.compile_timeit_template(
+                    self._stmt,
+                    self._setup,
+                )
 
         return self._timeit_module.timeit(number)
 
@@ -280,12 +283,21 @@ class Timer(object):
         with common.set_torch_threads(self._task_spec.num_threads):
             # Estimate the block size needed for measurement to be negligible
             # compared to the inner loop. This also serves as a warmup.
-            overhead = np.median([self._timer.timeit(0) for _ in range(5)])
+            timer_overhead = []
+            setup_overhead = []
+            for _ in range(5):
+                t0 = timeit.default_timer()
+                timer_overhead.append(self._timer.timeit(0))
+                setup_overhead.append(timeit.default_timer() - t0)
+
+            time_threshold = max(min_run_time / 1000, np.median(setup_overhead))
+            overhead = np.median(timer_overhead)
+
             number = 1
             while True:
                 time_taken = self._timer.timeit(number)
                 relative_overhead = overhead / time_taken
-                if relative_overhead <= 1e-4 and time_taken >= min_run_time / 1000:
+                if relative_overhead <= 1e-4 and time_taken >= time_threshold:
                     break
                 if time_taken > min_run_time:
                     break
