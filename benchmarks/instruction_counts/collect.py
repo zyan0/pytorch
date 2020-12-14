@@ -164,6 +164,7 @@ _MODES = {
 
 
 if __name__ == "__main__":
+    raise NotImplementedError("Currently transitioning.")
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, choices=list(_MODES.keys()), default="main")
     args, unknown_args = parser.parse_known_args()
