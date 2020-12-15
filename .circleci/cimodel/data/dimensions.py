@@ -1,20 +1,21 @@
 PHASES = ["build", "test"]
 
 CUDA_VERSIONS = [
-    "92",
-    "101",
-    "102",
+    # "92",
+    # "101",
+    # "102",
     "110",
 ]
 
 ROCM_VERSIONS = [
-    "3.9",
-    "3.10",
+    # "3.9",
+    # "3.10",
 ]
 
 ROCM_VERSION_LABELS = ["rocm" + v for v in ROCM_VERSIONS]
 
-GPU_VERSIONS = [None] + ["cuda" + v for v in CUDA_VERSIONS] + ROCM_VERSION_LABELS
+# GPU_VERSIONS = [None] + ["cuda" + v for v in CUDA_VERSIONS] + ROCM_VERSION_LABELS
+GPU_VERSIONS = ["cuda" + v for v in CUDA_VERSIONS] + ROCM_VERSION_LABELS
 
 STANDARD_PYTHON_VERSIONS = [
     "3.6",
