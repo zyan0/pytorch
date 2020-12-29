@@ -48,6 +48,6 @@ class TimerSpec:
 def make_timer(timer_spec: TimerSpec):
     return Timer(
         stmt=timer_spec.stmt,
-        timer_spec=spec.setup,
+        setup=timer_spec.setup,
         language=timer_spec.language,
     )

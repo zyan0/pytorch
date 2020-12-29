@@ -1,6 +1,9 @@
 import argparse
+import io
 import pickle
-from typing import List, Union
+import sys
+import traceback
+from typing import List, Optional, Union
 
 from torch.utils.benchmark import CallgrindStats, Measurement
 
@@ -21,25 +24,33 @@ def run(worker_input: WorkerInput) -> WorkerOutput:
             else:
                 assert worker_input.measurement_type == MeasurementType.WALL_TIME
                 results.append(timer.blocked_autorange(min_run_time=MIN_RUN_TIME))
-    except e:
+
+    except KeyboardInterrupt:
+        # Runner process sent SIGINT.
+        sys.exit()
+
+    except:
         # If a worker fails, we want to ship the Exception back to the caller
         # rather than raising in the worker.
-        return WorkerOutput(results=(), e=e)
+        f = io.StringIO()
+        traceback.print_exc(file=f)
+        return WorkerOutput(results=(), e_str=f.getvalue())
 
     return WorkerOutput(tuple(results))
 
 
-def main(input_file: str, output_file: str) -> None:
-    with open(input_file, 'rb') as f:
+def main(communication_file: str) -> None:
+    with open(communication_file, 'rb') as f:
         worker_input = pickle.load(f)
         assert isinstance(worker_input, WorkerInput)
 
     worker_output: WorkerOutput = run(worker_input)
-    with open(output_file, 'wb') as f:
+    with open(communication_file, 'wb') as f:
         pickle.dump(worker_output, f)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input_file', type=str)
-    parser.add_argument('--output_file', type=str)
+    parser.add_argument('--communication_file', type=str)
+    communication_file = parser.parse_args().communication_file
+    main(communication_file)
