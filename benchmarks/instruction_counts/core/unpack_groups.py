@@ -3,10 +3,11 @@ import itertools as it
 import re
 from typing import List, Tuple, TYPE_CHECKING
 
-from core.api import CostEstimate, Mode, TimerArgs, GroupedTimerArgs
+from core.api import Mode, TimerArgs, GroupedTimerArgs
 from core.jit import construct_model_invocation, generate_torchscript_file
 from core.types import Label, FlatDefinition, FlatIntermediateDefinition
 from definitions.setup import SETUP_MAP
+from worker.main import CostEstimate, WorkerTimerArgs
 
 
 if TYPE_CHECKING:
@@ -21,7 +22,10 @@ def unpack(definitions: FlatIntermediateDefinition) -> FlatDefinition:
 
     for label, args in definitions.items():
         if isinstance(args, TimerArgs):
-            results.append((label, Mode.EXPLICIT, args))
+            mode = (
+                Mode.EXPLICIT_PY if args.language == Language.PYTHON else
+                Mode.EXPLICIT_CPP)
+            results.append((label, mode, args))
 
         else:
             assert isinstance(args, GroupedTimerArgs)
@@ -60,7 +64,7 @@ def unpack(definitions: FlatIntermediateDefinition) -> FlatDefinition:
                     )
                     results.append((label, ts_mode_map[mode], jit_timer_args))
 
-    second_pass_results: List[Tuple[Label, Mode, TimerArgs]] = []
+    second_pass_results: List[Tuple[Label, Mode, WorkerTimerArgs]] = []
     for label, mode, timer_args in results:
         for t_args in timer_args.flatten():
             second_pass_results.append((label, mode, t_args))

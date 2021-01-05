@@ -1,7 +1,7 @@
 from typing import Dict, TYPE_CHECKING
 
 from core.api import Setup, GroupedTimerArgs
-from core.utils import from_string
+from core.utils import parse_stmts
 
 if TYPE_CHECKING:
     # See core.api for an explanation.
@@ -10,30 +10,49 @@ else:
     from torch.utils.benchmark import Language
 
 
-def _setup_from_string(schema: str) -> Dict[Language, str]:
-    # Use the same underlying parser as `from_string`
-    g: GroupedTimerArgs = from_string(setup=Setup.NONE, stmts=schema)
-    assert g.torchscript_signature is None
+def _setup_from_string(setup_stmts: str) -> Dict[Language, str]:
+    py_stmt, cpp_stmt = parse_stmts(setup_stmts)
     return {
-        Language.PYTHON: g.py_stmt or "",
-        Language.CPP: g.cpp_stmt or "",
+        Language.PYTHON: py_stmt,
+        Language.CPP: cpp_stmt,
     }
 
 
 SETUP_MAP: Dict[Setup, Dict[Language, str]] = {
     Setup.NONE: {
-        Language.PYTHON: "pass",
-        Language.CPP: "",
+        Language.PYTHON: r"pass",
+        Language.CPP: r"",
+    },
+
+    Setup.TRIVIAL: {
+        Language.PYTHON: r"x = torch.ones((4, 4))",
+        Language.CPP: r"auto x = torch::ones({4, 4});",
     },
 
     Setup.GENERIC: _setup_from_string(
         r"""
             Python                                   | C++
             ---------------------------------------- | ----------------------------------------
-            x = torch.ones((4, 4))                   | auto x = torch::ones({4, 4});
+            torch.manual_seed(138_10_23)             | torch::manual_seed(1381023);
+            x = torch.rand((4, 4))                   | auto x = torch::rand({4, 4});
             y_float = torch.ones((4, 4))             | auto y_float = torch::ones({4, 4});
             y_int = torch.ones(                      | auto y_int = torch::ones({4, 4}, at::kInt);
                 (4, 4), dtype=torch.int32)           |
+        """
+    ),
+
+    Setup.INDEXING: _setup_from_string(
+        r"""
+            Python                                   | C++
+            ---------------------------------------- | ----------------------------------------
+                                                     | using namespace torch::indexing;
+            torch.manual_seed(6626_10_34)            | torch::manual_seed(66261034);
+                                                     |
+            x = torch.randn(1, 1, 1)                 | auto x = torch::randn({1, 1, 1});
+            y = torch.randn(1, 1, 1)                 | auto y = torch::randn({1, 1, 1});
+            a = torch.zeros(100, 100, 1, 1, 1)       | auto a = torch::zeros({100, 100, 1, 1, 1});
+            b = torch.arange(100).long().flip(0)     | auto b = torch::arange(
+                                                     |     0, 100, torch::TensorOptions().dtype(torch::kLong)).flip(0);
         """
     ),
 

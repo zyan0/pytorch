@@ -5,6 +5,8 @@ import re
 import textwrap
 from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
+from worker.main import CostEstimate, WorkerTimerArgs
+
 if TYPE_CHECKING:
     # Benchmark utils are only partially strict compliant, so MyPy won't follow
     # imports using the public namespace. (Due to an exclusion rule in
@@ -16,9 +18,6 @@ else:
     from torch.utils.benchmark import CallgrindStats, Language, Measurement
 
 
-# =============================================================================
-# == Benchmark definition =====================================================
-# =============================================================================
 class Setup(enum.Enum):
     """Defines the class of setup that a stmt requires.
 
@@ -28,10 +27,12 @@ class Setup(enum.Enum):
     definitions.
     """
     NONE = 0
-    GENERIC = 1
-    MESOSCALE = 2
-    AUTOGRAD = 3
-    EXAMPLE_FOR_ADHOC = 4
+    TRIVIAL = 1
+    GENERIC = 2
+    INDEXING = 3
+    MESOSCALE = 4
+    AUTOGRAD = 5
+    EXAMPLE_FOR_ADHOC = 6
 
 
 class Mode(enum.Enum):
@@ -42,24 +43,13 @@ class Mode(enum.Enum):
     CPP_TS = "C++ (TorchScript)"
 
     # TimerArgs was explicitly provided.
-    EXPLICIT = "Explicit"
+    EXPLICIT_PY = "Explicit (Py)"
+    EXPLICIT_CPP = "Explicit (C++)"
 
-
-class CostEstimate(enum.Enum):
-    """Hint for how expensive a benchmark is expected to be.
-
-    Timer supports adaptive timing for wall times, but not instruction counts.
-    Generally this is desired since we want deterministic instruction counts,
-    however it can be tedious to choose sensible numbers when defining a slew
-    of benchmarks.
-    """
-    AUTO = 0
-    LESS_THAN_10_US = 1
-    LESS_THAN_50_US = 2
-    LESS_THAN_100_US = 3
-    LESS_THAN_250_US = 4
-    LESS_THAN_1000_US = 5
-    GIANT = 6
+    @property
+    def language(self) -> Language:
+        py_values = (Mode.PY, Mode.PY_TS, Mode.EXPLICIT_PY)
+        return Language.PYTHON if self in py_values else Language.CPP
 
 
 @dataclasses.dataclass(frozen=True)
@@ -84,13 +74,14 @@ class TimerArgs:
     # estimate or tell workers to determine a sensible value.
     cost: CostEstimate = CostEstimate.AUTO
 
-    def flatten(self) -> Tuple["TimerArgs", ...]:
+    def flatten(self) -> Tuple[WorkerTimerArgs, ...]:
+        self_dict = dataclasses.asdict(self)
+        assert tuple(self_dict.keys()) == WorkerTimerArgs.keys()
         if isinstance(self.num_threads, int):
-            return (self,)
+            return WorkerTimerArgs(**self_dict),
 
-        return tuple(
-            dataclasses.replace(self, num_threads=num_threads)
-            for num_threads in self.num_threads)
+        num_threads: Tuple[int, ...] = self_dict.pop("num_threads")
+        return tuple(WorkerTimerArgs(num_threads=n, **self_dict) for n in num_threads)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -138,9 +129,9 @@ class GroupedTimerArgs:
     GroupedTimerArgs will ultimately be parsed down to one or more TimerArgs
     for evaluation.
     """
-    setup: Setup
     py_stmt: Optional[str] = None
     cpp_stmt: Optional[str] = None
+    setup: Setup = Setup.NONE
     signature: Optional[str] = None
     num_threads: Union[int, Tuple[int, ...]] = 1
     cost: CostEstimate = CostEstimate.AUTO
@@ -173,34 +164,3 @@ class GroupedTimerArgs:
             raise ValueError(f"Invalid signature: `{self.signature}`")
 
         return tuple(match.groups()[0].split(", ")), match.groups()[1].strip()
-
-
-# =============================================================================
-# == Benchmark evaluation =====================================================
-# =============================================================================
-@dataclasses.dataclass(frozen=True)
-class WorkerOutput:
-    wall_time: Measurement
-    instructions: CallgrindStats
-    cost: CostEstimate  # Emperical cost.
-
-
-@dataclasses.dataclass(frozen=True)
-class WorkerFailure:
-    # If a worker fails, we attach the string contents of the Exception
-    # rather than the Exception object itself. This is done for two reasons:
-    #   1) Depending on the type thrown, `e` may or may not be pickleable
-    #   2) If we re-throw in the main process, we lose the true stack trace.
-    failure_trace: str
-
-
-class WorkerFailed(Exception):
-    """Raised in the main process when a worker failure is detected."""
-    def __init__(
-        self,
-        timer_args: TimerArgs,
-        wrapped_trace: Optional[str] = None
-    ) -> None:
-        self.timer_args: TimerArgs = timer_args
-        self.wrapped_trace: Optional[str] = wrapped_trace
-        super().__init__()

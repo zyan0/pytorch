@@ -3,10 +3,11 @@ import re
 import shutil
 import tempfile
 import textwrap
-from typing import List, Optional, Tuple, Union
+from typing import Iterator, List, Optional, Tuple, Union
 
-from core.api import CostEstimate, Setup, TimerArgs, GroupedTimerArgs
+from core.api import Setup, TimerArgs, GroupedTimerArgs
 from core.types import Definition, FlatIntermediateDefinition, Label
+from worker.main import CostEstimate
 
 
 def _flatten(
@@ -45,23 +46,13 @@ def flatten(schema: Definition) -> FlatIntermediateDefinition:
     return result
 
 
-def from_string(
-    setup: Setup,
-    stmts: str,
-    num_threads: Union[int, Tuple[int, ...]] = 1,
-    signature: Optional[str] = None,
-    cost: CostEstimate = CostEstimate.AUTO,
-) -> GroupedTimerArgs:
+def parse_stmts(stmts: str) -> Tuple[str, str]:
     """Parser for side-by-side Python and C++ stmts.
 
     For more complex statements, it can be useful to see Python and C++ code
     side by side. To this end, we provide an **extremely restricted** way
-    to define such GroupedTimerArgs. The schema should be mostly self
-    explanatory, with the following non-obvious caveats:
-
-      - An optional type-annotation like syntax may be included in the Python
-        column header which will be used to populate `torchscript_args` and
-        `torchscript_return`.
+    to define Python and C++ code side-by-side. The schema should be mostly
+    self explanatory, with the following non-obvious caveats:
       - Width for the left (Python) column MUST be 40 characters.
       - The column separator is " | ", not "|". Whitespace matters.
     """
@@ -95,14 +86,15 @@ def from_string(
         l_from_stmts = f"{py_lines[-1]:<40} | {cpp_lines[-1]:<40}".rstrip()
         assert l_from_stmts == l.rstrip(), f"Failed to round trip `{l}`"
 
-    return GroupedTimerArgs(
-        setup=setup,
-        py_stmt="\n".join(py_lines),
-        cpp_stmt="\n".join(cpp_lines),
-        num_threads=num_threads,
-        signature=signature,
-        cost=cost,
-    )
+    return "\n".join(py_lines), "\n".join(cpp_lines)
+
+
+def iter_parsed_lines(stmts: str) -> Iterator[Tuple[str, str]]:
+    py_stmt, cpp_stmt = parse_stmts(stmts)
+    py_lines = [l.rstrip() for l in py_stmt.splitlines(keepends=False)]
+    cpp_lines = [l.rstrip() for l in cpp_stmt.splitlines(keepends=False)]
+    assert len(py_lines) == len(cpp_lines)
+    return zip(py_lines, cpp_lines)
 
 
 _TEMPDIR: Optional[str] = None

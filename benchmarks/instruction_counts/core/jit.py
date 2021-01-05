@@ -7,8 +7,9 @@ from typing import cast, Optional, Tuple, Union, TYPE_CHECKING
 
 import torch
 
-from core.api import CostEstimate, GroupedTimerArgs, TimerArgs
+from core.api import GroupedTimerArgs, TimerArgs
 from core.utils import get_temp_dir
+from worker.main import CostEstimate
 
 
 if TYPE_CHECKING:

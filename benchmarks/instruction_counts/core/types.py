@@ -2,6 +2,7 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 from core.api import Mode, TimerArgs, GroupedTimerArgs
+from worker.main import WorkerTimerArgs
 
 
 # =============================================================================
@@ -99,4 +100,4 @@ Definition = Dict[_Label, _Value]
 FlatIntermediateDefinition = Dict[Label, Union[TimerArgs, GroupedTimerArgs]]
 
 # Final parsed schema.
-FlatDefinition = Tuple[Tuple[Label, Mode, TimerArgs], ...]
+FlatDefinition = Tuple[Tuple[Label, Mode, WorkerTimerArgs], ...]

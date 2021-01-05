@@ -1,11 +1,11 @@
 """Alternate place to define benchmarks. (e.g. for debugging.)"""
 from torch.utils.benchmark import Language
 
-from core.api import CostEstimate, Setup, TimerArgs, GroupedTimerArgs
+from core.api import Setup, TimerArgs, GroupedTimerArgs
 from core.types import FlatIntermediateDefinition
 from core.utils import flatten
-
 from definitions.standard import BENCHMARKS as STANDARD_BENCHMARKS
+from worker.main import CostEstimate
 
 
 ADHOC_BENCHMARKS: FlatIntermediateDefinition = flatten({
@@ -22,10 +22,6 @@ ADHOC_BENCHMARKS: FlatIntermediateDefinition = flatten({
     ),
 
     "group definition": GroupedTimerArgs(
-        # Need to add entry to Setup Enum so grouping code knows how to
-        # set up in both Python and C++.
-        setup=Setup.EXAMPLE_FOR_ADHOC,
-
         py_stmt="""
             y = x.clone()
             y += 5
@@ -35,13 +31,18 @@ ADHOC_BENCHMARKS: FlatIntermediateDefinition = flatten({
             y += 5;
         """,
 
+        # Need to add entry to Setup Enum so grouping code knows how to
+        # set up in both Python and C++.
+        setup=Setup.EXAMPLE_FOR_ADHOC,
+
         # Optional. This will allow TorchScript to be measured.
         signature="f(x) -> y",
 
-        # Optional. Defaults to `CostEstimate.AUTO`
+        # Optional. Defaults to `CostEstimate.AUTO` Used to determine how many
+        # Callgrind iterations to run.
         cost=CostEstimate.AUTO,
     ),
 
     # Borrow example from the standard set. (e.g. for debugging a known regression.)
-    "zero_ (from standard)": STANDARD_BENCHMARKS[("Pointwise", "zero_")],
+    "zero_ (from standard)": STANDARD_BENCHMARKS[("Pointwise", "Data movement", "zero_")],
 })
