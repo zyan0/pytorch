@@ -1,7 +1,8 @@
 """This module sets the user facing command APIs, both CLI and programmatic."""
+import dataclasses
 import itertools as it
 import textwrap
-from typing import Dict, Mapping, List, Optional, Tuple, TYPE_CHECKING
+from typing import cast, Dict, Iterable, Mapping, List, Optional, Tuple, TYPE_CHECKING
 
 from core.api import Mode
 from core.types import Label
@@ -44,14 +45,60 @@ def _make_sentry(source_cmd: Optional[str]) -> WorkOrder:
 
 
 class TimeReplicateCallback(Callback):
-    def __init__(self) -> None:
-        pass
+    def __init__(
+        self,
+        work_items_by_source_cmd: Tuple[Tuple[WorkOrder, ...], ...]
+    ) -> None:
+        n_source_cmds = len(work_items_by_source_cmd[0])
+        assert all(len(w) == n_source_cmds for w in work_items_by_source_cmd)
+
+        self._outstanding = [n_source_cmds for _ in work_items_by_source_cmd]
+        self._results: Dict[WorkOrder, WorkerOutput] = {}
+        self._work_items_by_source_cmd = work_items_by_source_cmd
+        self._indices: Dict[WorkOrder, Tuple[int, int]] = {
+            wij: (i, j)
+            for i, wi in enumerate(work_items_by_source_cmd)
+            for j, wij in enumerate(wi)
+        }
 
     def __call__(
         self,
         work_order: WorkOrder,
         output: WorkerOutput,
     ) -> Iterable[WorkOrder]:
+        assert work_order not in self._results
+        self._results[work_order] = output
+
+        if work_order not in self._indices:
+            # TODO
+            return ()
+
+        i, j = self._indices[work_order]
+        self._outstanding[i] -= 1
+
+        if self._outstanding[i]:
+            return ()
+
+        work_items = self._work_items_by_source_cmd[i]
+        results: Tuple[WorkerOutput, ...] = tuple(self._results[w] for w in work_items)
+        counts: Tuple[int, ...] = tuple(
+            r.instructions.counts(denoise=True) for r in results)
+
+        if not all(c == counts[0] for c in counts):
+            new_work_items: List[WorkOrder] = []
+            for w in work_items:
+                new_timer_args = dataclasses.replace(
+                    w.timer_args,
+                    collect_instructions=False,
+                )
+                new_work_items.extend([
+                    dataclasses.replace(w, timer_args=new_timer_args)
+                    for _ in range(3)  # TODO: tune number and exact algorithm.
+                ])
+
+            return new_work_items
+
+
         return ()
 
 
@@ -60,13 +107,13 @@ def _collect(
     ad_hoc: bool = False
 ) -> Tuple[ResultType, ...]:
     all_work_items: List[WorkOrder] = []
-    work_items_by_source_cmd: List[List[WorkOrder]] = [[] for _ in source_cmds]
+    work_items_by_source_cmd: List[Tuple[WorkOrder, ...]] = []
 
     # Set up normal benchmarks
     benchmarks = ADHOC_BENCHMARKS if ad_hoc else BENCHMARKS
     for label, mode, timer_args in unpack(benchmarks):
-        for i, source_cmd in enumerate(source_cmds):
-            work_order = WorkOrder(
+        orders: Tuple[WorkOrder, ...] = tuple(
+            WorkOrder(
                 label=label,
                 mode=mode,
                 timer_args=timer_args,
@@ -74,12 +121,14 @@ def _collect(
                 timeout=180.0,
                 retries=2,
             )
-            all_work_items.append(work_order)
-            work_items_by_source_cmd[i].append(work_order)
+            for source_cmd in source_cmds
+        )
+        work_items_by_source_cmd.append(orders)
+        all_work_items.extend(orders)
 
     # Set up sentry measurements for warnings.
-    sentry_work_items: List[List[WorkOrder]] = [
-        [_make_sentry(source_cmd) for _ in range(3)]
+    sentry_work_items: List[Tuple[WorkOrder, ...]] = [
+        tuple(_make_sentry(source_cmd) for _ in range(3))
         for source_cmd in source_cmds
     ]
     all_work_items = list(it.chain(*sentry_work_items)) + all_work_items

@@ -24,6 +24,15 @@ class WorkerFailed(Exception):
         super().__init__()
 
 
+class Callback:
+    def __call__(
+        self,
+        work_order: WorkOrder,
+        output: WorkerOutput
+    ) -> Iterable[WorkOrder]:
+        return ()
+
+
 class Runner:
     _core_pool: CorePool
     _work_items: Tuple[WorkOrder, ...]

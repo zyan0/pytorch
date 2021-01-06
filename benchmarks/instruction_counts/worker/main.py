@@ -21,7 +21,7 @@ import enum
 import io
 import os
 import pickle
-from typing import Any, Dict, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, Union, TYPE_CHECKING
 import traceback
 import sys
 
@@ -70,6 +70,7 @@ class WorkerTimerArgs:
     num_threads: int
     language: Language
     cost: CostEstimate
+    collect_instructions: bool = True
 
     @classmethod
     def keys(cls) -> Tuple[str, ...]:
@@ -79,8 +80,15 @@ class WorkerTimerArgs:
 @dataclasses.dataclass(frozen=True)
 class WorkerOutput:
     wall_time: Measurement
-    instructions: CallgrindStats
+    _instructions: Optional[CallgrindStats]
     cost: CostEstimate  # Emperical cost. (If AUTO.)
+
+    @property
+    def instructions(self) -> CallgrindStats:
+        # We sometimes omit instruction collection; in such cases the caller
+        # should know not to ask for them.
+        assert self._instructions is not None
+        return self._instructions
 
 
 @dataclasses.dataclass(frozen=True)
@@ -118,7 +126,7 @@ class WorkerUnpickler(pickle.Unpickler):
 # to have to compile C++ timers anyway (as they're used as a check before
 # calling Valgrind), so we may as well grab wall times for reference. They
 # are comparatively inexpensive.
-MIN_RUN_TIME = 5
+MIN_RUN_TIME = 10
 
 
 # Heuristics for estimating the runtime of `collect_callgrind` based on
@@ -169,12 +177,11 @@ def _run(timer_args: WorkerTimerArgs) -> WorkerOutput:
     else:
         n = CALLGRIND_COST_GUIDE[cost][1]
 
+    if not timer_args.collect_instructions:
+        return WorkerOutput(wall_time=m, _instructions=None, cost=cost)
+
     stats = timer.collect_callgrind(number=n, collect_baseline=False)
-    return WorkerOutput(
-        wall_time=m,
-        instructions=stats,
-        cost=cost,
-    )
+    return WorkerOutput(wall_time=m, _instructions=stats, cost=cost)
 
 
 def main(communication_file: str) -> None:

@@ -7,7 +7,7 @@ def main() -> None:
     ab_test(
         source_a="source activate throwaway",
         source_b="source activate test_env",
-        ad_hoc=False,
+        ad_hoc=True,
     )
 
 
