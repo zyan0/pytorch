@@ -9,7 +9,7 @@ from core.unpack_groups import unpack
 from definitions.ad_hoc import ADHOC_BENCHMARKS
 from definitions.standard import BENCHMARKS
 from execution.future import WorkOrder
-from execution.runner import Runner
+from execution.runner import Callback, Runner
 from frontend.display import render_ab, ResultType, ValueType
 from worker.main import CostEstimate, WorkerTimerArgs, WorkerOutput
 
@@ -41,6 +41,18 @@ def _make_sentry(source_cmd: Optional[str]) -> WorkOrder:
         timeout=180.0,
         retries=2,
     )
+
+
+class TimeReplicateCallback(Callback):
+    def __init__(self) -> None:
+        pass
+
+    def __call__(
+        self,
+        work_order: WorkOrder,
+        output: WorkerOutput,
+    ) -> Iterable[WorkOrder]:
+        return ()
 
 
 def _collect(
@@ -112,3 +124,7 @@ def ab_test(source_a: str, source_b: str, ad_hoc: bool = False) -> None:
 
     import pdb
     pdb.set_trace()
+
+    # import importlib
+    # import frontend.display
+    # importlib.reload(frontend.display); frontend.display.render_ab(results[0], results[1])
