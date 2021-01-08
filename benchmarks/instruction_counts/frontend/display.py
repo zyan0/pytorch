@@ -3,7 +3,7 @@ import dataclasses
 import enum
 import itertools as it
 import statistics
-from typing import cast, Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, TYPE_CHECKING
+from typing import cast, Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
 
@@ -20,7 +20,7 @@ else:
     from torch.utils.benchmark import CallgrindStats, Language, Measurement
 
 
-ValueType = Tuple[CallgrindStats, Tuple[Measurement, ...]]
+ValueType = Tuple[CallgrindStats, Measurement]
 ResultType = Tuple[Tuple[Label, int, Mode, ValueType], ...]
 
 
@@ -201,7 +201,7 @@ class Label_Cell(Cell):
         ]) or ""
 
         # Extra space for top level labels.
-        if mask[0]:
+        if mask[0] and any(len(m) > 1 for m in masks):
             result = f"\n{result}"
 
         return result
@@ -242,7 +242,29 @@ class NumThreads_Cell(Cell):
 
 
 class AB_Cell(Cell):
-    def __init__(self, a: ValueType, b: ValueType) -> None:
+    def __init__(
+        self,
+        a: ValueType,
+        b: ValueType,
+        display_time: bool = False
+    ) -> None:
+        self._display_time: bool = display_time
+        significant_figures = min(
+            a[1].significant_figures,
+            b[1].significant_figures,
+        )
+        self._significant_figures = significant_figures
+
+        a_t, b_t = a[1].median, b[1].median
+        delta_t = abs(b_t - a_t) / statistics.mean([a_t, b_t])
+        self._zero_within_noise: bool = (delta_t < 1.0 / (significant_figures or 1))
+        self._robust_time = (
+            display_time and significant_figures and not self._zero_within_noise
+        )
+        self._a_times: float = a_t * 1e6
+        self._b_times: float = b_t * 1e6
+
+        # For now times are stable enough to be useful, so we only use counts.
         self._a_counts = int(a[0].counts(denoise=True) / a[0].number_per_run)
         self._b_counts = int(b[0].counts(denoise=True) / b[0].number_per_run)
 
@@ -251,36 +273,46 @@ class AB_Cell(Cell):
             return "..."
 
         segment_lengths, _ = self.col_reduce(AB_Cell.segment_lengths)
-        s0, s1, s2 = [s.rjust(l) for s, l in zip(self.segments, segment_lengths)]
-        return f"{s0} -> {s1}  ({s2})"
+        i_s0, i_s1, i_s2, t_s0, t_s1, t_s2 = [
+            s.rjust(l) for s, l in zip(self.segments, segment_lengths * 2)]
+
+        output: str = f"{i_s0} -> {i_s1}  ({i_s2})"
+        if self._robust_time:
+            output = f"{output}\n{t_s0} -> {t_s1}  ({t_s2})\n "
+
+        elif self._display_time and self._zero_within_noise:
+            output = f"{output}\n{'N/A (within noise)'.center(len(output))}\n "
+
+        return output
+
+    @staticmethod
+    def make_segments(a: Union[int, float], b: Union[int, float], template: str = "{}{}") -> Tuple[str, str, str]:
+        sign_str = "+" if b >= a else "-"
+        return (
+            template.format(sign_str, abs(b - a)),
+            template.format("", b),
+            "{}{:.1f}%".format(sign_str, 100 * abs(b - a) / statistics.mean([a, b]))
+        )
 
     @property
-    def segments(self) -> Tuple[str, str, str]:
-        abs_delta = abs(self._b_counts - self._a_counts)
-        rel_delta = abs_delta / statistics.mean([self._a_counts, self._b_counts])
-
-        sign: str = ""
-        if self._b_counts < self._a_counts:
-            sign = "-"
-
-        elif self._b_counts > self._a_counts:
-            sign = "+"
-
-        return (
-            f"{sign}{abs_delta}",
-            str(self._b_counts),
-            f"{sign}{rel_delta * 100:.1f} %"
+    def segments(self) -> Tuple[str, str, str, str, str, str]:
+        i_segments = self.make_segments(self._a_counts, self._b_counts, "{}{}")
+        t_segments = (
+            self.make_segments(self._a_times, self._b_times, "{}{:.1f}")
+            if self._robust_time else ("", "", "")
         )
+        return i_segments + t_segments
 
     @staticmethod
     def segment_lengths(col: Tuple[Cell, ...]) -> Tuple[int, int, int]:
-        lengths = [0, 0, 0]
+        lengths = [0, 0, 0, 0, 0, 0]
         for c in col:
             if isinstance(c, AB_Cell):
                 lengths = [max(li, len(si)) for li, si in zip(lengths, c.segments)]
 
-        assert len(lengths) == 3
-        return cast(Tuple[int, int, int], tuple(lengths))
+        output = tuple(max(i, j) for i, j in zip(lengths[:3], lengths[3:]))
+        assert len(output) == 3
+        return cast(Tuple[int, int, int], output)
 
     def alignment(self) -> Alignment:
         return Alignment.RIGHT

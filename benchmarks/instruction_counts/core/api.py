@@ -74,6 +74,8 @@ class TimerArgs:
     # estimate or tell workers to determine a sensible value.
     cost: CostEstimate = CostEstimate.AUTO
 
+    collect_instructions: bool = True
+
     def flatten(self) -> Tuple[WorkerTimerArgs, ...]:
         self_dict = dataclasses.asdict(self)
         assert tuple(self_dict.keys()) == WorkerTimerArgs.keys()

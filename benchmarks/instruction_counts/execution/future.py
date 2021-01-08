@@ -32,7 +32,7 @@ class WorkOrder:
     retries: Optional[int] = None
 
     def __hash__(self) -> int:
-        return hash(id(self))
+        return id(self)
 
 
 class _BenchmarkProcess:

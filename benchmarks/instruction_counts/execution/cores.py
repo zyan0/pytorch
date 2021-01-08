@@ -12,7 +12,7 @@ CPU_COUNT: int = multiprocessing.cpu_count()
 # work as well. (And we don't want to contend with the benchmarks.) To account
 # for this, we reserve at most `CPU_COUNT - SLACK` cores for benchmarks. In
 # practice, completely saturating the CPU doesn't actually reduce overall time.
-SLACK: int = min(CPU_COUNT - 1, int(CPU_COUNT * 0.9), 4)
+SLACK: int = min(CPU_COUNT - 1, int(CPU_COUNT * 0.10), 4)
 
 
 def get_numa_information() -> Tuple[Tuple[int, int], ...]:

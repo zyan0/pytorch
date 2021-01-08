@@ -9,16 +9,18 @@ from core.types import Label
 from core.unpack_groups import unpack
 from definitions.ad_hoc import ADHOC_BENCHMARKS
 from definitions.standard import BENCHMARKS
+from execution.callback import FixedReplicateCallback
 from execution.future import WorkOrder
-from execution.runner import Callback, Runner
+from execution.runner import Runner
 from frontend.display import render_ab, ResultType, ValueType
 from worker.main import CostEstimate, WorkerTimerArgs, WorkerOutput
 
 if TYPE_CHECKING:
     # See core.api for an explanation why this is necessary.
+    from torch.utils.benchmark.utils.common import Measurement
     from torch.utils.benchmark.utils.timer import Language
 else:
-    from torch.utils.benchmark import Language
+    from torch.utils.benchmark import Language, Measurement
 
 
 def _make_sentry(source_cmd: Optional[str]) -> WorkOrder:
@@ -44,66 +46,9 @@ def _make_sentry(source_cmd: Optional[str]) -> WorkOrder:
     )
 
 
-class TimeReplicateCallback(Callback):
-    def __init__(
-        self,
-        work_items_by_source_cmd: Tuple[Tuple[WorkOrder, ...], ...]
-    ) -> None:
-        n_source_cmds = len(work_items_by_source_cmd[0])
-        assert all(len(w) == n_source_cmds for w in work_items_by_source_cmd)
-
-        self._outstanding = [n_source_cmds for _ in work_items_by_source_cmd]
-        self._results: Dict[WorkOrder, WorkerOutput] = {}
-        self._work_items_by_source_cmd = work_items_by_source_cmd
-        self._indices: Dict[WorkOrder, Tuple[int, int]] = {
-            wij: (i, j)
-            for i, wi in enumerate(work_items_by_source_cmd)
-            for j, wij in enumerate(wi)
-        }
-
-    def __call__(
-        self,
-        work_order: WorkOrder,
-        output: WorkerOutput,
-    ) -> Iterable[WorkOrder]:
-        assert work_order not in self._results
-        self._results[work_order] = output
-
-        if work_order not in self._indices:
-            # TODO
-            return ()
-
-        i, j = self._indices[work_order]
-        self._outstanding[i] -= 1
-
-        if self._outstanding[i]:
-            return ()
-
-        work_items = self._work_items_by_source_cmd[i]
-        results: Tuple[WorkerOutput, ...] = tuple(self._results[w] for w in work_items)
-        counts: Tuple[int, ...] = tuple(
-            r.instructions.counts(denoise=True) for r in results)
-
-        if not all(c == counts[0] for c in counts):
-            new_work_items: List[WorkOrder] = []
-            for w in work_items:
-                new_timer_args = dataclasses.replace(
-                    w.timer_args,
-                    collect_instructions=False,
-                )
-                new_work_items.extend([
-                    dataclasses.replace(w, timer_args=new_timer_args)
-                    for _ in range(3)  # TODO: tune number and exact algorithm.
-                ])
-
-            return new_work_items
-
-
-        return ()
-
-
 def _collect(
     source_cmds: Tuple[Optional[str], ...] = (None,),
+    timing_replicates: int = 0,
     ad_hoc: bool = False
 ) -> Tuple[ResultType, ...]:
     all_work_items: List[WorkOrder] = []
@@ -134,7 +79,12 @@ def _collect(
     all_work_items = list(it.chain(*sentry_work_items)) + all_work_items
 
     # Collect measurements.
-    results = Runner(work_items=tuple(all_work_items)).run()
+    time_callback = FixedReplicateCallback(
+        num_replicates=timing_replicates,
+        work_items_by_source_cmd=tuple(work_items_by_source_cmd),
+    )
+    runner = Runner(work_items=tuple(all_work_items), callbacks=(time_callback,))
+    results = runner.run()
 
     # Warn if there is ANY variation in instruction counts. While Python has
     # some jitter, C++ should be truly detministic.
@@ -150,7 +100,7 @@ def _collect(
 
     # Organize normal benchmark results.
     output: List[ResultType] = []
-    for work_items in work_items_by_source_cmd:
+    for work_items in zip(*work_items_by_source_cmd):
         output_i: List[Tuple[Label, int, Mode, ValueType]] = []
         for w in work_items:
             r = results[w]
@@ -158,22 +108,26 @@ def _collect(
                 w.label,
                 w.timer_args.num_threads,
                 w.mode,
-                (r.instructions, (r.wall_time,))
+                (r.instructions, time_callback.get_times_for(w))
             ))
         output.append(tuple(output_i))
+
     return tuple(output)
 
 
-def ab_test(source_a: str, source_b: str, ad_hoc: bool = False) -> None:
+def ab_test(source_a: str, source_b: str, timing_replicates: int = 0, ad_hoc: bool = False) -> None:
     results = _collect(
         source_cmds=(source_a, source_b),
+        timing_replicates=timing_replicates,
         ad_hoc=ad_hoc,
     )
-    render_ab(results[0], results[1])
+
+    def render() -> None:
+        import importlib
+        import frontend.display
+        importlib.reload(frontend.display)
+        frontend.display.render_ab(results[0], results[1])
+
 
     import pdb
     pdb.set_trace()
-
-    # import importlib
-    # import frontend.display
-    # importlib.reload(frontend.display); frontend.display.render_ab(results[0], results[1])
