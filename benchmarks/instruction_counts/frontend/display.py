@@ -2,7 +2,9 @@ import abc
 import dataclasses
 import enum
 import itertools as it
+import re
 import statistics
+import textwrap
 from typing import cast, Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
@@ -36,6 +38,11 @@ class ShouldRender(enum.Enum):
     MAYBE = 1
 
 
+def strip_ansi(s: str) -> str:
+    # https://gist.github.com/rene-d/9e584a7dd2935d0f461904b9f2950007
+    return re.sub(r"\033\[[0-9]+(;[0-9]+)?m", "", s)
+
+
 class Cell(abc.ABC):
     # TODO: annotate with `Final` and `final`.
     _row: Optional["Row"] = None
@@ -48,7 +55,7 @@ class Cell(abc.ABC):
         return self._row._table.col_reduce(self, f)
 
     @abc.abstractmethod
-    def render(self) -> str:
+    def render(self) -> Union[str, Tuple[str, int]]:
         ...
 
     @abc.abstractmethod
@@ -69,10 +76,24 @@ class Row:
         return len(self.cells)
 
     def render(self) -> Tuple[Tuple[str, ...], ...]:
-        col_lines: List[Tuple[str, ...]] = [
-            tuple(c.render().splitlines(keepends=False)) for c in self.cells]
-        row_h = max(len(lines) for lines in col_lines)
-        return tuple(("",) * (row_h - len(lines)) + lines for lines in col_lines)
+        col_renders: List[Tuple[Tuple[str, ...], int]] = []
+        padding = [0, 0]
+        for cell in self.cells:
+            r: Union[str, Tuple[str, int]] = cell.render()
+            r_str, ref_index = (r, 0) if isinstance(r, str) else r
+            lines = tuple(r_str.splitlines(keepends=False))
+            ref_index %= len(lines) or 1  # Handle negative indexing
+            col_renders.append((lines, ref_index))
+
+            padding[0] = max(padding[0], ref_index)
+            padding[1] = max(padding[1], len(lines) - ref_index)
+
+        output: List[Tuple[str, ...]] = []
+        for lines, ref_index in col_renders:
+            top_pad = padding[0] - ref_index
+            bottom_pad = padding[1] - (len(lines) - ref_index)
+            output.append(("",) * top_pad + lines + ("",) * bottom_pad)
+        return tuple(output)
 
 
 class Table:
@@ -117,6 +138,7 @@ class Table:
 
     @staticmethod
     def pad(s: str, width: int, alignment: Alignment) -> str:
+        width += (len(s) - len(strip_ansi(s)))
         if alignment == Alignment.LEFT:
             return s.ljust(width)
         elif alignment == Alignment.RIGHT:
@@ -125,7 +147,7 @@ class Table:
             assert alignment == Alignment.CENTER
             return s.center(width)
 
-    def render(self) -> None:
+    def render(self) -> Tuple[str, ...]:
         segments: Tuple[Tuple[Tuple[str, ...], ...], ...] = tuple(
             r.render() for r in self._rows)
 
@@ -140,7 +162,7 @@ class Table:
 
         alignments = [Alignment.CENTER if a == Alignment.ANY else a for a in alignments]
         col_widths: Tuple[int, ...] = tuple(
-            max(len(s) for s in it.chain(*col_segments))
+            max(len(strip_ansi(s)) for s in it.chain(*col_segments))
             for col_segments in zip(*segments))
 
         rendered_rows: List[str] = []
@@ -155,8 +177,10 @@ class Table:
                 self.col_separator.join(ri) for ri in zip(*padded_row)
             ]))
 
-            # Debug only
-            print(rendered_rows[-1])
+        return tuple(rendered_rows)
+
+    def __str__(self) -> str:
+        return "\n".join(self.render())
 
 
 class Null_Cell(Cell):
@@ -190,7 +214,7 @@ class Label_Cell(Cell):
     def __init__(self, label: Label) -> None:
         self._label: Label = label
 
-    def render(self) -> str:
+    def render(self) -> Tuple[str, int]:
         masks, i = self.col_reduce(Label_Cell.gather_masks)
         mask = masks[i]
         assert len(mask) == len(self._label)
@@ -204,7 +228,7 @@ class Label_Cell(Cell):
         if mask[0] and any(len(m) > 1 for m in masks):
             result = f"\n{result}"
 
-        return result
+        return result, -1
 
     def alignment(self) -> Alignment:
         return Alignment.LEFT
@@ -277,11 +301,12 @@ class AB_Cell(Cell):
             s.rjust(l) for s, l in zip(self.segments, segment_lengths * 2)]
 
         output: str = f"{i_s0} -> {i_s1}  ({i_s2})"
-        if self._robust_time:
-            output = f"{output}\n{t_s0} -> {t_s1}  ({t_s2})\n "
+        if self._display_time:
+            time_str = f"{t_s0} -> {t_s1}  ({t_s2})"
+            if self._zero_within_noise:
+                time_str = f"\033[2m{time_str}\033[0m"
 
-        elif self._display_time and self._zero_within_noise:
-            output = f"{output}\n{'N/A (within noise)'.center(len(output))}\n "
+            output = f"{output}\n{time_str}\n "
 
         return output
 
@@ -296,6 +321,11 @@ class AB_Cell(Cell):
 
     @property
     def segments(self) -> Tuple[str, str, str, str, str, str]:
+        return (
+            self.make_segments(self._a_counts, self._b_counts, "{}{}") +
+            self.make_segments(self._a_times, self._b_times, "{}{:.1f}")
+        )
+
         i_segments = self.make_segments(self._a_counts, self._b_counts, "{}{}")
         t_segments = (
             self.make_segments(self._a_times, self._b_times, "{}{:.1f}")
@@ -318,7 +348,7 @@ class AB_Cell(Cell):
         return Alignment.RIGHT
 
 
-def render_ab(a_results: ResultType, b_results: ResultType) -> None:
+def render_ab(a_results: ResultType, b_results: ResultType, display_time: bool = False) -> None:
     packed_results: Dict[
         Tuple[Label, int],
         Dict[Mode, Tuple[ValueType, ValueType]]
@@ -345,9 +375,15 @@ def render_ab(a_results: ResultType, b_results: ResultType) -> None:
             Label_Cell(label=label),
             NumThreads_Cell(num_threads=num_threads),
         ) + tuple(
-            AB_Cell(*r[mode]) if mode in r else Null_Cell()
+            AB_Cell(*r[mode], display_time) if mode in r else Null_Cell()
             for mode in Mode
         ))
 
     table = Table(rows)
-    table.render()
+    print(str(table))
+    print(textwrap.dedent("""
+    Cell format:
+        `\u0394I -> final I (% change)`
+        For example, if A is 150 instructions and B is 144
+        this would be represented: `-6 -> 144  (-4.1%)`
+    """))

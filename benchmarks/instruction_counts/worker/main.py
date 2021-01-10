@@ -70,7 +70,6 @@ class WorkerTimerArgs:
     num_threads: int
     language: Language
     cost: CostEstimate
-    collect_instructions: bool = True
 
     @classmethod
     def keys(cls) -> Tuple[str, ...]:
@@ -80,15 +79,8 @@ class WorkerTimerArgs:
 @dataclasses.dataclass(frozen=True)
 class WorkerOutput:
     wall_time: Measurement
-    _instructions: Optional[CallgrindStats]
+    instructions: CallgrindStats
     cost: CostEstimate  # Emperical cost. (If AUTO.)
-
-    @property
-    def instructions(self) -> CallgrindStats:
-        # We sometimes omit instruction collection; in such cases the caller
-        # should know not to ask for them.
-        assert self._instructions is not None
-        return self._instructions
 
 
 @dataclasses.dataclass(frozen=True)
@@ -147,7 +139,7 @@ assert all(c1 > c0 for (c0, _), (c1, _) in
     zip(CALLGRIND_COST_GUIDE.values(), list(CALLGRIND_COST_GUIDE.values())[1:]))
 
 
-MIN_RUN_TIME = 5
+MIN_RUN_TIME = 20
 
 
 # =============================================================================
@@ -161,16 +153,11 @@ def _run(timer_args: WorkerTimerArgs) -> WorkerOutput:
         language=timer_args.language,
     )
 
-    if timer_args.collect_instructions:
-        # While the point of this is mainly to collect instruction counts,
-        # we're going to have to compile C++ timers anyway (as they're used as
-        # a check before calling Valgrind), so we may as well grab wall times
-        # for reference. They are comparatively inexpensive.
-        m = timer.blocked_autorange(min_run_time=MIN_RUN_TIME)
-    else:
-        # Timing only run, so we can run for much longer.
-        m = timer.blocked_autorange(min_run_time=60)
-        return WorkerOutput(wall_time=m, _instructions=None, cost=timer_args.cost)
+    # While the point of this is mainly to collect instruction counts,
+    # we're going to have to compile C++ timers anyway (as they're used as
+    # a check before calling Valgrind), so we may as well grab wall times
+    # for reference. They are comparatively inexpensive.
+    m = timer.blocked_autorange(min_run_time=MIN_RUN_TIME)
 
     cost: CostEstimate = timer_args.cost
     n: int
@@ -185,7 +172,7 @@ def _run(timer_args: WorkerTimerArgs) -> WorkerOutput:
     stats = timer.collect_callgrind(number=n, collect_baseline=False)
     return WorkerOutput(
         wall_time=m,
-        _instructions=stats,
+        instructions=stats,
         cost=cost
     )
 

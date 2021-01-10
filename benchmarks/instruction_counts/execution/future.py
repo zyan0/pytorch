@@ -61,6 +61,7 @@ class _BenchmarkProcess:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             shell=True,
+            executable="/bin/bash",
         )
 
     def clone(self) -> "_BenchmarkProcess":
@@ -146,16 +147,22 @@ class _BenchmarkProcess:
 
 class InProgress:
     _work_order: WorkOrder
+    _cpu_list: Optional[str]
     _proc: _BenchmarkProcess
     _timeouts: int = 0
 
     def __init__(self, work_order: WorkOrder, cpu_list: Optional[str]):
         self._work_order = work_order
+        self._cpu_list = cpu_list
         self._proc = _BenchmarkProcess(work_order, cpu_list)
 
     @property
     def work_order(self) -> WorkOrder:
         return self._work_order
+
+    @property
+    def cpu_list(self) -> Optional[str]:
+        return self._cpu_list
 
     @property
     def proc(self) -> _BenchmarkProcess:

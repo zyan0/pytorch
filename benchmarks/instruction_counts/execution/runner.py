@@ -7,7 +7,6 @@ import time
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union, TYPE_CHECKING
 
 from core.api import Mode
-from execution.callback import Callback
 from execution.cores import CorePool, CPU_COUNT, SLACK
 from execution.future import InProgress, WorkOrder
 from worker.main import MIN_RUN_TIME, WorkerFailure, WorkerOutput, WorkerTimerArgs
@@ -27,29 +26,21 @@ class WorkerFailed(Exception):
 
 
 class Runner:
+    _work_items: Tuple[WorkOrder, ...]
     _core_pool: CorePool
-    _callbacks: Tuple[Callback, ...]
-    _work_items: List[WorkOrder]
     _start_time: Optional[float]
     _work_queue: List[WorkOrder]
     _active_jobs: List[InProgress]
-    _core_allocation: Dict[InProgress, str]
     _currently_processed: Optional[WorkOrder]
     _results: Dict[WorkOrder, WorkerOutput]
     _durations: Dict[WorkOrder, float]
 
-    def __init__(
-        self,
-        work_items: Tuple[WorkOrder, ...],
-        callbacks: Tuple[Callback, ...] = ()
-    ) -> None:
+    def __init__(self, work_items: Tuple[WorkOrder, ...]) -> None:
+        self._work_items = work_items
         self._core_pool = CorePool()
-        self._callbacks = callbacks
-        self._work_items = list(work_items)
         self._start_time = None
         self._work_queue = list(work_items)
         self._active_jobs = []
-        self._core_allocation = {}
         self._currently_processed = None
         self._results = {}
         self._durations = {}
@@ -108,12 +99,9 @@ class Runner:
             result: Union[WorkerOutput, WorkerFailure] = job.result
             if isinstance(result, WorkerOutput):
                 self._results[job.work_order] = result
-                self._core_pool.release(self._core_allocation[job])
+                assert job.cpu_list is not None
+                self._core_pool.release(job.cpu_list)
                 self._durations[job.work_order] = job.duration
-                new_work_items = list(it.chain(
-                    *[c(job.work_order, result) for c in self._callbacks]))
-                self._work_items.extend(new_work_items)
-                self._work_queue.extend(new_work_items)
 
             else:
                 assert isinstance(result, WorkerFailure)
@@ -138,7 +126,6 @@ class Runner:
                 work_queue.append(work_order)
             else:
                 job = InProgress(work_order, cpu_list)
-                self._core_allocation[job] = cpu_list
                 self._active_jobs.append(job)
 
                 # Stagger creation. This helps with contention.
@@ -288,6 +275,7 @@ class Runner:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 encoding="utf-8",
+                executable="/bin/bash",
             )
 
             if proc.returncode:

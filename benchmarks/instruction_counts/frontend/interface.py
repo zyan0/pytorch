@@ -9,7 +9,6 @@ from core.types import Label
 from core.unpack_groups import unpack
 from definitions.ad_hoc import ADHOC_BENCHMARKS
 from definitions.standard import BENCHMARKS
-from execution.callback import FixedReplicateCallback
 from execution.future import WorkOrder
 from execution.runner import Runner
 from frontend.display import render_ab, ResultType, ValueType
@@ -79,11 +78,7 @@ def _collect(
     all_work_items = list(it.chain(*sentry_work_items)) + all_work_items
 
     # Collect measurements.
-    time_callback = FixedReplicateCallback(
-        num_replicates=timing_replicates,
-        work_items_by_source_cmd=tuple(work_items_by_source_cmd),
-    )
-    runner = Runner(work_items=tuple(all_work_items), callbacks=(time_callback,))
+    runner = Runner(work_items=tuple(all_work_items))
     results = runner.run()
 
     # Warn if there is ANY variation in instruction counts. While Python has
@@ -108,25 +103,81 @@ def _collect(
                 w.label,
                 w.timer_args.num_threads,
                 w.mode,
-                (r.instructions, time_callback.get_times_for(w))
+                (r.instructions, r.wall_time)
             ))
         output.append(tuple(output_i))
 
     return tuple(output)
 
 
+def demo() -> None:
+    envs = (
+        "ab_ref",       # fcb69d2ebaede960e7708706436d372b68807921
+        "ab_change_0",  # eef5eb05bf0468ed5f840d2bf3e09c135b8760df
+        "ab_change_1",  # dde5b6e177ec24d34651ffd8df04b4ebdf264e6e
+    )
+
+    source_cmds = tuple(f"source activate {env}" for env in envs)
+
+
+    import os
+    import shutil
+    import subprocess
+
+    ref_path = os.path.abspath(__file__)
+    for _ in range(4):
+        ref_path = os.path.split(ref_path)[0]
+    ref_path = os.path.join(ref_path, "torch/utils/benchmark/utils")
+
+    for env, source_cmd in zip(envs, source_cmds):
+        torch_path = subprocess.run(
+            f"{source_cmd} && python -c 'import torch;print(torch.__file__)'",
+            stdout=subprocess.PIPE,
+            shell=True,
+            encoding="utf-8",
+        ).stdout
+        benchmark_path = os.path.join(os.path.split(torch_path)[0], "utils/benchmark/utils")
+
+        print(f"Patching Timer: `{env}``")
+        if os.path.exists(benchmark_path):
+            shutil.rmtree(benchmark_path)
+        shutil.copytree(ref_path, benchmark_path)
+
+    results = _collect(
+        source_cmds=source_cmds,
+        timing_replicates=0,
+        ad_hoc=False,
+    )
+
+    def render(ia: int = 0, ib: int = 1) -> None:
+        import importlib
+        import frontend.display
+        importlib.reload(frontend.display)
+        print("\n" * 10)
+        frontend.display.render_ab(results[ia], results[ib])
+
+    import pdb
+    pdb.set_trace()
+
+
+
 def ab_test(source_a: str, source_b: str, timing_replicates: int = 0, ad_hoc: bool = False) -> None:
     results = _collect(
-        source_cmds=(source_a, source_b),
+        source_cmds=(
+            source_a,
+            source_b,
+            source_a,  # For debug A/A testing
+        ),
         timing_replicates=timing_replicates,
         ad_hoc=ad_hoc,
     )
 
-    def render() -> None:
+    def render(ia: int = 0, ib: int = 1, display_time: bool = False) -> None:
         import importlib
         import frontend.display
         importlib.reload(frontend.display)
-        frontend.display.render_ab(results[0], results[1])
+        print("\n" * 10)
+        frontend.display.render_ab(results[ia], results[ib], display_time)
 
 
     import pdb

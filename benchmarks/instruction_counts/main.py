@@ -1,16 +1,16 @@
 # gh/taylorrobie/callgrind_ci_prototype
 
-from frontend.interface import ab_test
+from frontend.interface import demo
 
 
 def main() -> None:
-    ab_test(
-        source_a="source activate throwaway",
-        source_b="source activate throwaway",
-        # source_b="source activate test_env",
-        timing_replicates=2,
-        ad_hoc=True,
-    )
+    demo()
+    # ab_test(
+    #     source_a="source activate throwaway",
+    #     source_b="source activate test_env",
+    #     timing_replicates=2,
+    #     ad_hoc=False,
+    # )
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import json
 import multiprocessing
 import re
 import subprocess
+import threading
 from typing import Dict, List, Optional, Tuple
 
 
@@ -12,7 +13,7 @@ CPU_COUNT: int = multiprocessing.cpu_count()
 # work as well. (And we don't want to contend with the benchmarks.) To account
 # for this, we reserve at most `CPU_COUNT - SLACK` cores for benchmarks. In
 # practice, completely saturating the CPU doesn't actually reduce overall time.
-SLACK: int = min(CPU_COUNT - 1, int(CPU_COUNT * 0.10), 4)
+SLACK: int = min(CPU_COUNT - 1, int(CPU_COUNT * 0.15), 6)
 
 
 def get_numa_information() -> Tuple[Tuple[int, int], ...]:
@@ -122,21 +123,24 @@ class CorePool:
         )
 
         self._reservation_nodes: Dict[str, _NUMA_Node] = {}
+        self._lock: threading.Lock = threading.Lock()
 
     def reserve(self, n: int) -> Optional[str]:
         """Try each NUMA node in order and see if a reservation is possible."""
         assert n > 0
-        if sum(n.num_available for n in self._nodes) - n <= SLACK:
+        with self._lock:
+            if sum(n.num_available for n in self._nodes) - n <= SLACK:
+                return None
+
+            for node in self._nodes:
+                reservation: Optional[str] = node.reserve(n)
+                if reservation is None:
+                    continue
+
+                self._reservation_nodes[reservation] = node
+                return reservation
             return None
 
-        for node in self._nodes:
-            reservation: Optional[str] = node.reserve(n)
-            if reservation is None:
-                continue
-
-            self._reservation_nodes[reservation] = node
-            return reservation
-        return None
-
     def release(self, key: str) -> None:
-        self._reservation_nodes[key].release(key)
+        with self._lock:
+            self._reservation_nodes[key].release(key)

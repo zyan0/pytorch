@@ -6,6 +6,7 @@ from core.types import FlatIntermediateDefinition
 from core.utils import flatten, iter_parsed_lines, parse_stmts
 from worker.main import CostEstimate
 
+
 # Convenience methods for small, simple benchmarks to reduce boilerplate.
 _small_trivial = functools.partial(
     GroupedTimerArgs,
@@ -16,6 +17,7 @@ _small_generic = functools.partial(
     GroupedTimerArgs,
     setup=Setup.GENERIC,
     cost=CostEstimate.LESS_THAN_10_US)
+
 
 BENCHMARKS: FlatIntermediateDefinition = flatten({
     "empty": {
@@ -36,6 +38,11 @@ BENCHMARKS: FlatIntermediateDefinition = flatten({
 
     ("Pointwise", "Math"): {
         "add": {
+            "Tensor-Scalar": _small_generic(
+                r"x += 1.0",
+                r"x += 1.0;",
+            ),
+
             "Tensor-Tensor": _small_generic(
                 r"x += y_float",
                 r"x += y_float;",
