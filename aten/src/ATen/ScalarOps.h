@@ -47,4 +47,10 @@ inline at::Tensor scalar_to_tensor(Scalar s, const Device device = at::kCPU) {
   }
 }
 
+inline at::Tensor wrapped_scalar_tensor(Scalar scalar) {
+  auto tensor = scalar_to_tensor(scalar);
+  tensor.unsafeGetTensorImpl()->set_wrapped_number(true);
+  return tensor;
+}
+
 }
