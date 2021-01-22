@@ -311,7 +311,8 @@ Examples::
 """)
 
 lstsq = _add_docstr(_linalg.linalg_lstsq, r"""
-torch.linalg.lstsq(input, b, cond=None, driver_name=None) -> (Tensor solution, Tensor residuals, Tensor rank, Tensor singular_values)
+torch.linalg.lstsq(input, b, cond=None, driver_name=None)
+    -> (Tensor solution, Tensor residuals, Tensor rank, Tensor singular_values)
 
 Computes the least squares solution to the system with a batch of matrices :math:`a` (represented by :attr:`input`)
 and a batch of vectors/matrices :math:`b` such that
