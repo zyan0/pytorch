@@ -4,7 +4,9 @@ from .samplerdataset import SamplerIterableDataset
 from .listdirfilesdataset import ListDirFilesIterableDataset
 from .loadfilesfromdiskdataset import LoadFilesFromDiskIterableDataset
 from .readfilesfromtardatapipe import ReadFilesFromTarIDP
+from .readfilesfromzipdatapipe import ReadFilesFromZipIDP
 
 __all__ = ['BatchIterableDataset', 'CollateIterableDataset', 'ListDirFilesIterableDataset',
            'LoadFilesFromDiskIterableDataset', 'SamplerIterableDataset',
-           'ListDirFilesIterableDataset', 'LoadFilesFromDiskIterableDataset', 'ReadFilesFromTarIDP']
+           'ListDirFilesIterableDataset', 'LoadFilesFromDiskIterableDataset', 'ReadFilesFromTarIDP',
+           'ReadFilesFromZipIDP']
