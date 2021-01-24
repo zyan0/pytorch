@@ -371,7 +371,7 @@ Example::
     >>> a = torch.tensor([[10, 2, 3], [3, 10, 5], [5, 6, 12]], dtype=torch.float)
     >>> b = torch.tensor([[[2, 5, 1], [3, 2, 1], [5, 1, 9]],
                           [[4, 2, 9], [2, 0, 3], [2, 5, 3]]], dtype=torch.float)
-    >>> x = torch.linalg.lstsq(a.view(1, 3, 3), b).x
+    >>> x = torch.linalg.lstsq(a.view(1, 3, 3), b).solution
     >>> x
     tensor([[[ 0.0793,  0.5345, -0.1228],
              [ 0.1125,  0.1458, -0.3517],
@@ -389,7 +389,7 @@ Example::
     >>> rank
     tensor([2])
 
-    >>> sv = torch.linalg.lstsq(a.view(1, 3, 3), b, driver='gelsd').s
+    >>> sv = torch.linalg.lstsq(a.view(1, 3, 3), b, driver='gelsd').singular_values
     >>> (sv - a.svd()[1]).max().abs()
     tensor(5.7220e-06)
 """)
