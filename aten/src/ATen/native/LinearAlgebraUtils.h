@@ -102,7 +102,7 @@ static inline int64_t matrixStride(const Tensor& batched_matrices) {
 // and a_linear_batch_idx is an index in the 3d representation which corresponds to
 // the memory a_working_ptr points to, in other words:
 // a_working_ptr == a.view({-1, a.size(-2), a.size(-1)}.select(0, a_linear_batch_idx).data_ptr<scalar_t>();
-// a_linear_batch_idx is usefull to store metadata related to `a`, such as, for example,
+// a_linear_batch_idx is useful to store metadata related to `a`, such as, for example,
 // its rank or singular values (see linalg_lstsq).
 template<typename scalar_t, typename func_t>
 void batch_iterator_with_broadcasting(const Tensor& a, const Tensor& b, const func_t& f) {

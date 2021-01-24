@@ -266,8 +266,9 @@ class TestLinalg(TestCase):
 
         a = torch.rand(2, 2, 2, 2, dtype=dtype, device=device)
         b = torch.rand(2, 2, 2, dtype=dtype, device=complement_device(device))
-        with self.assertRaisesRegex(RuntimeError, 'input tensors should be on the same device'):
-            torch.linalg.lstsq(a, b)
+        if a.device != b.device:
+            with self.assertRaisesRegex(RuntimeError, 'input tensors should be on the same device'):
+                torch.linalg.lstsq(a, b)
 
         b = (torch.rand(2, 2, 2, dtype=dtype, device=device) * 100).long()
         with self.assertRaisesRegex(RuntimeError, 'input tensors should be of the same dtype'):
