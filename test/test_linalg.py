@@ -259,7 +259,7 @@ class TestLinalg(TestCase):
             torch.linalg.lstsq(a, b.unsqueeze(-1))
 
         def complement_device(device):
-            if device == 'cpu':
+            if device == 'cpu' and torch.cuda.is_available():
                 return 'cuda'
             else:
                 return 'cpu'
