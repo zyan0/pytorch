@@ -2239,7 +2239,7 @@ std::tuple<Tensor, Tensor, Tensor> _lstsq_helper_cpu(
 std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
     const Tensor& self, const Tensor& b,
     c10::optional<double> cond,
-    c10::optional<std::string> driver_name) {
+    c10::optional<std::string> driver) {
   TORCH_CHECK(
     self.dim() >= 2,
     "torch.linalg.lstsq: input `self` Tensor should be at least 2D"
@@ -2261,15 +2261,15 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
       "torch.linalg.lstsq: self.size(-2) should match b.size(-2)"
   );
 
-  // if `driver_name` is empty, we use `driver_opt` to be set to
+  // if `driver` is empty, we use `driver_opt` to be set to
   // c10::nullopt if working with CUDA tensors,
   // otherwise to "gelsy" driver.
   // CUDA tensors are treated specially because MAGMA
   // has only 'gels' driver supported.
-  c10::optional<std::string> driver_opt = driver_name;
+  c10::optional<std::string> driver_opt = driver;
   // check whether the user provided name is a valid driver name
-  if (driver_name.has_value()) {
-    auto driver_str = driver_name.value();
+  if (driver.has_value()) {
+    auto driver_str = driver.value();
     // convert `driver_str` to lower case inplace.
     std::transform(driver_str.begin(), driver_str.end(), driver_str.begin(),
       [](unsigned char c) { return std::tolower(c); });
@@ -2279,7 +2279,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
     if (at::kCPU == self.device().type()) {
       TORCH_CHECK(
         allowed_drivers.find(driver_str) != allowed_drivers.end(),
-        "torch.linalg.lstsq: parameter `driver_name` should be one of "
+        "torch.linalg.lstsq: parameter `driver` should be one of "
         "(gels, gelsy, gelsd, gelss)"
       );
     }
@@ -2287,7 +2287,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
     else {
       TORCH_CHECK(
         driver_str == "gels",
-        "torch.linalg.lstsq: `driver_name` other than `gels` is not supported on CUDA"
+        "torch.linalg.lstsq: `driver` other than `gels` is not supported on CUDA"
       );
     }
   }

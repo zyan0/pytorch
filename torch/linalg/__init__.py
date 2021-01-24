@@ -311,7 +311,7 @@ Examples::
 """)
 
 lstsq = _add_docstr(_linalg.linalg_lstsq, r"""
-torch.linalg.lstsq(input, b, cond=None, driver_name=None)
+torch.linalg.lstsq(input, b, cond=None, *, driver=None)
     -> (Tensor solution, Tensor residuals, Tensor rank, Tensor singular_values)
 
 Computes the least squares solution to the system with a batch of matrices :math:`a` (represented by :attr:`input`)
@@ -336,17 +336,17 @@ Args:
     b (Tensor): the batch of righ-hand side vectors or matrices :math:`b`
         of shape :math:`(..., m)` or :math:`(..., m, k)` with :math:`m > 0, k > 0`
     cond (float, optional): used to determine the effective rank of :math:`a`
-        for the rank-revealing drivers (see :attr:`driver_name`).
+        for the rank-revealing drivers (see :attr:`driver`).
         Singular values :math:`s[i] \le cond * s[0]` are treated as zero.
         If :attr:`cond` is ``None`` or is smaller than zero,
         the machine precision based on ``a.dtype`` is used.
         Default: ``None``
-    driver_name (str, optional): the name of the LAPACK/MAGMA driver that is used
+    driver (str, optional): the name of the LAPACK/MAGMA driver that is used
         to compute the solution.
         If the inputs are on the CPU, the valid values are
         (``'gels'``, ``'gelsy'``, ``'gelsd``, ``'gelss'``, ``None``).
         If the inptus are on the GPU, the valid values are (``'gels'``, ``None``).
-        If ``driver_name == None``, ``'gelsy'`` is used for CPU inputs and ``'gels'`` for GPU inputs.
+        If ``driver == None``, ``'gelsy'`` is used for CPU inputs and ``'gels'`` for GPU inputs.
         Default: ``None``
 
 .. note::
@@ -361,10 +361,10 @@ Returns:
         - **residuals** (*Tensor*):  if :math:`m > n` then for full rank matrices in :math:`a` the tensor encodes
             the squared residuals of the solutions, that is :math:`||ax - b||_F^2`.
         - **rank** (*Tensor*): the tensor of ranks of the matrix :math:`a` with shape ``a.shape[:-2]``.
-            Non-empty if :attr:`driver_name` is one of (``'gelsy'``, ``'gelsd'``, ``'gelss'``).
+            Non-empty if :attr:`driver` is one of (``'gelsy'``, ``'gelsd'``, ``'gelss'``).
         - **singular_values** (*Tensor*): the tensor of singular values
             of the matrix :math:`a` with shape ``a.shape[:-2] + (min(m, n),)``.
-            Non-empty if :attr:`driver_name` is one of (``'gelsd'``, ``'gelss'``)
+            Non-empty if :attr:`driver` is one of (``'gelsd'``, ``'gelss'``)
 
 Example::
 
@@ -389,7 +389,7 @@ Example::
     >>> rank
     tensor([2])
 
-    >>> sv = torch.linalg.lstsq(a.view(1, 3, 3), b, driver_name='gelsd').s
+    >>> sv = torch.linalg.lstsq(a.view(1, 3, 3), b, driver='gelsd').s
     >>> (sv - a.svd()[1]).max().abs()
     tensor(5.7220e-06)
 """)

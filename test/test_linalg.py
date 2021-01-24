@@ -160,7 +160,7 @@ class TestLinalg(TestCase):
             cond = 1e-7
             m = a.size(-2)
             n = a.size(-1)
-            res = torch.linalg.lstsq(a, b, cond=cond, driver_name=driver)
+            res = torch.linalg.lstsq(a, b, cond=cond, driver=driver)
             sol = res.solution.narrow(-2, 0, n)
 
             check_correctness(a, b, sol)
@@ -262,12 +262,12 @@ class TestLinalg(TestCase):
         b = torch.rand(2, 2, 2, dtype=dtype, device=device)
 
         if device != 'cpu':
-            with self.assertRaisesRegex(RuntimeError, '`driver_name` other than `gels` is not supported on CUDA'):
-                torch.linalg.lstsq(a, b, driver_name='fictitious_driver')
+            with self.assertRaisesRegex(RuntimeError, '`driver` other than `gels` is not supported on CUDA'):
+                torch.linalg.lstsq(a, b, driver='fictitious_driver')
         # if on cpu
         else:
-            with self.assertRaisesRegex(RuntimeError, r'parameter `driver_name` should be one of \(gels, gelsy, gelsd, gelss\)'):
-                torch.linalg.lstsq(a, b, driver_name='fictitious_driver')
+            with self.assertRaisesRegex(RuntimeError, r'parameter `driver` should be one of \(gels, gelsy, gelsd, gelss\)'):
+                torch.linalg.lstsq(a, b, driver='fictitious_driver')
 
         if device != 'cpu':
             a = torch.rand(2, 3, dtype=dtype, device=device)
