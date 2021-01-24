@@ -2241,6 +2241,14 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
     c10::optional<double> cond,
     c10::optional<std::string> driver) {
   TORCH_CHECK(
+    self.device().type() == b.device().type(),
+    "torch.linalg.lstsq: input tensors should be on the same device"
+  );
+  TORCH_CHECK(
+    self.scalar_type() == b.scalar_type(),
+    "torch.linalg.lstsq: input tensors should be of the same dtype"
+  );
+  TORCH_CHECK(
     self.dim() >= 2,
     "torch.linalg.lstsq: input `self` Tensor should be at least 2D"
   );
@@ -2299,7 +2307,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
       : c10::optional<std::string>("gels");
   }
 
-  // CUDA has only `gels` driver now which ONLY works with overdermined systems
+  // CUDA has only `gels` driver now which ONLY works with overdetermined systems
   if (at::kCUDA == self.device().type()) {
     TORCH_CHECK(
       self.size(-2) >= self.size(-1),
