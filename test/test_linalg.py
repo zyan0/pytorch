@@ -258,7 +258,12 @@ class TestLinalg(TestCase):
         with self.assertRaisesRegex(RuntimeError, r'self.size\(-2\) should match b.size\(-2\)'):
             torch.linalg.lstsq(a, b.unsqueeze(-1))
 
-        complement_device = lambda device: 'cuda' if device == 'cpu' else 'cpu'
+        def complement_device(device):
+            if device == 'cpu':
+                return 'cuda'
+            else:
+                return 'cpu'
+
         a = torch.rand(2, 2, 2, 2, dtype=dtype, device=device)
         b = torch.rand(2, 2, 2, dtype=dtype, device=complement_device(device))
         with self.assertRaisesRegex(RuntimeError, 'input tensors should be on the same device'):
