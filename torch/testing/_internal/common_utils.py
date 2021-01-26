@@ -1545,6 +1545,13 @@ def random_square_matrix_of_rank(l, rank, dtype=torch.double, device='cpu'):
     return u.mm(torch.diag(s).to(dtype)).mm(v.transpose(0, 1))
 
 def random_well_conditioned_matrix(*shape, dtype, device, mean=1.0, sigma=0.001):
+    """
+    Returns a random rectangular matrix (batch of matrices)
+    with singular values sampled from a Gaussian with
+    mean `mean` and standard deviation `sigma`.
+    The smaller the `sigma`, the better conditioned
+    the output matrix is.
+    """
     primitive_dtype = {
         torch.float: torch.float,
         torch.double: torch.double,
