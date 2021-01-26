@@ -135,6 +135,49 @@ class TestLinalg(TestCase):
             sol2 = a.pinverse() @ b
             self.assertEqual(sol, sol2, atol=1e-5, rtol=1e-5)
 
+        def check_correctness_ref(a, b, res, ref):
+            def apply_if_not_none(t, f):
+                if t is not None:
+                    return f(t)
+                else:
+                    return None
+
+            def select_if_none(t, i):
+                selected = apply_if_not_none(t, lambda x: x.select(0, i).numpy())
+                return selected
+
+            m = a.size(-2)
+            n = a.size(-1)
+            nrhs = b.size(-1)
+            a_3d = a.view(-1, m, n)
+            b_3d = b.view(-1, m, nrhs)
+
+            solution_3d = res.solution.view(-1, n, nrhs)
+            residuals_3d = apply_if_not_none(res.residuals, lambda t: t.view(-1, nrhs))
+            rank_3d = apply_if_not_none(res.rank, lambda t: t.view(-1))
+            singular_values_3d = apply_if_not_none(res.singular_values, lambda t: t.view(-1, min(m, n)))
+            batch_size = a_3d.shape[0]
+
+            for i in range(batch_size):
+                sol, residuals, rank, singular_values = ref(
+                    a_3d.select(0, i).numpy(),
+                    b_3d.select(0, i).numpy()
+                )
+                if not residuals.size:
+                    residuals = None
+                self.assertEqual(sol, solution_3d.select(0, i).numpy(), atol=1e-5, rtol=1e-5)
+                self.assertEqual(residuals, select_if_none(residuals_3d, i), atol=1e-5, rtol=1e-5)
+                self.assertEqual(rank, select_if_none(rank_3d, i), atol=1e-5, rtol=1e-5)
+                self.assertEqual(singular_values, select_if_none(singular_values_3d, i), atol=1e-5, rtol=1e-5)
+
+        def check_correctness_scipy(a, b, res, driver):
+            if TEST_SCIPY and driver not in (None, 'gels'):
+                import scipy.linalg
+
+                def scipy_ref(a, b):
+                    return scipy.linalg.lstsq(a, b, lapack_driver=driver)
+                check_correctness_ref(a, b, res, scipy_ref)
+
         def check_ranks(a, ranks, cond=1e-7):
             ranks2 = torch.matrix_rank(a, tol=cond)
             ranks2 = ranks2.unsqueeze(0) if ranks2.dim() == 0 else ranks2
@@ -161,6 +204,8 @@ class TestLinalg(TestCase):
             n = a.size(-1)
             res = torch.linalg.lstsq(a, b, cond=cond, driver=driver)
             sol = res.solution.narrow(-2, 0, n)
+
+            check_correctness_scipy(a, b, res, driver)
 
             check_correctness(a, b, sol)
             if self.device_type == 'cpu' and driver != 'gels':

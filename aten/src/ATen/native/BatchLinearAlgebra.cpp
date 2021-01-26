@@ -2464,7 +2464,9 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
   if (self.numel() && b.numel()) {
     std::tie(x, rank, singular_values) =
       at::_lstsq_helper(self_working_copy, b_working_copy, rcond, driver_opt);
-    residuals = x.narrow(-2, n, std::max(m, n) - n).pow_(2).sum(-2);
+    if (m > n && driver_opt.value() != "gelsy") {
+      residuals = x.narrow(-2, n, std::max(m, n) - n).abs().pow_(2).sum(-2);
+    }
     x = x.narrow(-2, 0, n);
   }
   // if either `self` or `b` is empty, return an empty tensor or,
