@@ -126,9 +126,10 @@ class TestLinalg(TestCase):
     @dtypes(torch.float, torch.double, torch.cfloat, torch.cdouble)
     def test_linalg_lstsq(self, device, dtype):
         from torch.testing._internal.common_utils import random_well_conditioned_matrix
-        drivers = ('gels', 'gelsy', 'gelsd', 'gelss', None) \
-            if device == 'cpu' \
-            else ('gels', None)
+        if self.device_type == 'cpu':
+            drivers = ('gels', 'gelsy', 'gelsd', 'gelss', None)
+        else:
+            drivers = ('gels', None)
 
         def check_correctness(a, b, sol):
             sol2 = a.pinverse() @ b
@@ -145,6 +146,7 @@ class TestLinalg(TestCase):
 
         ms = [2 ** i for i in range(1, 5)]
         m_ge_n_sizes = [(m, m // 2) for m in ms] + [(m, m) for m in ms]
+        # cases m < n are only supported on CPU
         m_l_n_sizes = [(m // 2, m) for m in ms]
         matrix_sizes = m_ge_n_sizes + (m_l_n_sizes if device == 'cpu' else [])
         batches = [(), (2,), (2, 2), (2, 2, 2)]
@@ -161,11 +163,15 @@ class TestLinalg(TestCase):
             sol = res.solution.narrow(-2, 0, n)
 
             check_correctness(a, b, sol)
-            if device == 'cpu':
-                if driver != 'gels':
-                    check_ranks(a, res.rank, cond)
-                    if (driver is not None) and driver != 'gelsy':
-                        check_singular_values(a, res.singular_values)
+            if self.device_type == 'cpu' and driver != 'gels':
+                # rank-revealing drivers are only available for the CPU.
+                # `gels` is not rank-revealing and is only for full
+                # rank inputs.
+                check_ranks(a, res.rank, cond)
+            if self.device_type == 'cpu' and driver in ('gelsd', 'gelss'):
+                # SVD-based drivers are only available for the CPU.
+                # These are only `gelsd` and `gelss`.
+                check_singular_values(a, res.singular_values)
 
     @skipCUDAIfNoMagma
     @skipCPUIfNoLapack
