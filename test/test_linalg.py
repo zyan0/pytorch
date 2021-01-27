@@ -181,8 +181,8 @@ class TestLinalg(TestCase):
 
                 def scipy_ref(a, b):
                     return scipy.linalg.lstsq(a, b, lapack_driver=driver)
-                check_correctness_ref(a, b, res, scipy_ref)
- 
+                check_correctness_ref(a, b, res, scipy_ref) 
+
         def check_correctness_numpy(a, b, res, driver):
             if driver in ('gelsd', 'gelss'):
                 import numpy.linalg
