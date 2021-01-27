@@ -163,6 +163,11 @@ class TestLinalg(TestCase):
                     a_3d.select(0, i).numpy(),
                     b_3d.select(0, i).numpy()
                 )
+                # SciPy returns an empty array when
+                # residuals cannot be computed.
+                # This behavior is inconsistent with
+                # returned singular values. Singular values
+                # are None when lapack_driver='gelsy'
                 if not residuals.size:
                     residuals = None
                 self.assertEqual(sol, solution_3d.select(0, i).numpy(), atol=1e-5, rtol=1e-5)
