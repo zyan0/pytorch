@@ -182,6 +182,14 @@ class TestLinalg(TestCase):
                 def scipy_ref(a, b):
                     return scipy.linalg.lstsq(a, b, lapack_driver=driver)
                 check_correctness_ref(a, b, res, scipy_ref)
+ 
+        def check_correctness_numpy(a, b, res, driver):
+            if driver in ('gelsd', 'gelss'):
+                import numpy.linalg
+
+                def numpy_ref(a, b):
+                    return numpy.linalg.lstsq(a, b, rcond=-1)
+                check_correctness_ref(a, b, res, numpy_ref)
 
         def check_ranks(a, ranks, cond=1e-7):
             ranks2 = torch.matrix_rank(a, tol=cond)
@@ -211,6 +219,7 @@ class TestLinalg(TestCase):
             sol = res.solution.narrow(-2, 0, n)
 
             check_correctness_scipy(a, b, res, driver)
+            check_correctness_numpy(a, b, res, driver)
 
             check_correctness(a, b, sol)
             if self.device_type == 'cpu' and driver != 'gels':
