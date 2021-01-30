@@ -2569,6 +2569,20 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
   else {
     x = b_working_copy.zero_().narrow(-2, 0, n);
   }
+
+  auto return_empty_if_undefined = [&self](Tensor& t) {
+    return t.defined() ? t : at::empty({0}, self.options());
+  };
+
+  // Some output stays undefined for some values of driver.
+  // Instead of returning undefined tensors which get exposed as
+  // Nones in the Python interface, we return empty tensors.
+  // This way we follow the convention of output types in the
+  // torch.linalg namespace
+  residuals = return_empty_if_undefined(residuals);
+  rank = return_empty_if_undefined(rank);
+  singular_values = return_empty_if_undefined(singular_values);
+
   return std::make_tuple(x, residuals, rank, singular_values);
 }
 

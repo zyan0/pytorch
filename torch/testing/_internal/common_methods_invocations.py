@@ -839,6 +839,17 @@ class TriangularOpInfo(OpInfo):
             out.append(SampleInput(a, kwargs=dict(upper=True)))
         return out
 
+def sample_inputs_linalg_lstsq(op_info, device, dtype, requires_grad=False):
+    from torch.testing._internal.common_utils import random_well_conditioned_matrix
+    out = []
+    for batch in ((), (3,), (3, 3)):
+        shape = batch + (3, 3)
+        # NOTE: inputs are not marked with `requires_grad` since
+        # linalg_lstsq is not differentiable
+        a = random_well_conditioned_matrix(*shape, dtype=dtype, device=device)
+        b = torch.rand(*shape, dtype=dtype, device=device)
+        out.append(SampleInput((a, b)))
+    return out
 
 def sample_inputs_linalg_pinv(op_info, device, dtype, requires_grad=False):
     """
@@ -1780,6 +1791,16 @@ op_db: List[OpInfo] = [
            sample_inputs_func=sample_inputs_linalg_solve,
            check_batched_gradgrad=False,
            decorators=[skipCUDAIfNoMagma, skipCPUIfNoLapack]),
+    # TODO(@nikitaved): uncomment once the issue with the grad is resolved
+    # OpInfo('linalg.lstsq',
+    #         aten_name='linalg_lstsq',
+    #         op=torch.linalg.lstsq,
+    #         dtypes=floating_and_complex_types(),
+    #         test_inplace_grad=False,
+    #         supports_tensor_out=False,
+    #         sample_inputs_func=sample_inputs_linalg_lstsq,
+    #         check_batched_gradgrad=False,
+    #         decorators=[skipCUDAIfNoMagma, skipCPUIfNoLapack]),
     OpInfo('linalg.pinv',
            aten_name='linalg_pinv',
            op=torch.linalg.pinv,

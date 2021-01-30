@@ -132,14 +132,14 @@ class TestLinalg(TestCase):
             self.assertEqual(sol, sol2, atol=1e-5, rtol=1e-5)
 
         def check_correctness_ref(a, b, res, ref):
-            def apply_if_not_none(t, f):
-                if t is not None:
+            def apply_if_not_empty(t, f):
+                if t.numel():
                     return f(t)
                 else:
-                    return None
+                    return t
 
             def select_if_none(t, i):
-                selected = apply_if_not_none(t, lambda x: x.select(0, i).numpy())
+                selected = apply_if_not_empty(t, lambda x: x.select(0, i).numpy())
                 return selected
 
             m = a.size(-2)
@@ -149,9 +149,9 @@ class TestLinalg(TestCase):
             b_3d = b.view(-1, m, nrhs)
 
             solution_3d = res.solution.view(-1, n, nrhs)
-            residuals_3d = apply_if_not_none(res.residuals, lambda t: t.view(-1, nrhs))
-            rank_3d = apply_if_not_none(res.rank, lambda t: t.view(-1))
-            singular_values_3d = apply_if_not_none(res.singular_values, lambda t: t.view(-1, min(m, n)))
+            residuals_3d = apply_if_not_empty(res.residuals, lambda t: t.view(-1, nrhs))
+            rank_3d = apply_if_not_empty(res.rank, lambda t: t.view(-1))
+            singular_values_3d = apply_if_not_empty(res.singular_values, lambda t: t.view(-1, min(m, n)))
             batch_size = a_3d.shape[0]
 
             for i in range(batch_size):
@@ -159,13 +159,9 @@ class TestLinalg(TestCase):
                     a_3d.select(0, i).numpy(),
                     b_3d.select(0, i).numpy()
                 )
-                # SciPy returns an empty array when
-                # residuals cannot be computed.
-                # This behavior is inconsistent with
-                # returned singular values. Singular values
-                # are None when lapack_driver='gelsy'
-                if not residuals.size:
-                    residuals = None
+                # Singular values are None when lapack_driver='gelsy' in SciPy
+                if singular_values is None:
+                    singular_values = []
                 self.assertEqual(sol, solution_3d.select(0, i).numpy(), atol=1e-5, rtol=1e-5)
                 self.assertEqual(residuals, select_if_none(residuals_3d, i), atol=1e-5, rtol=1e-5)
                 self.assertEqual(rank, select_if_none(rank_3d, i), atol=1e-5, rtol=1e-5)
