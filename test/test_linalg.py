@@ -138,7 +138,7 @@ class TestLinalg(TestCase):
                 else:
                     return t
 
-            def select_if_none(t, i):
+            def select_if_not_empty(t, i):
                 selected = apply_if_not_empty(t, lambda x: x.select(0, i).numpy())
                 return selected
 
@@ -162,10 +162,10 @@ class TestLinalg(TestCase):
                 # Singular values are None when lapack_driver='gelsy' in SciPy
                 if singular_values is None:
                     singular_values = []
-                self.assertEqual(sol, solution_3d.select(0, i).numpy(), atol=1e-5, rtol=1e-5)
-                self.assertEqual(residuals, select_if_none(residuals_3d, i), atol=1e-5, rtol=1e-5)
-                self.assertEqual(rank, select_if_none(rank_3d, i), atol=1e-5, rtol=1e-5)
-                self.assertEqual(singular_values, select_if_none(singular_values_3d, i), atol=1e-5, rtol=1e-5)
+                self.assertEqual(sol, select_if_not_empty(solution_3d, i), atol=1e-5, rtol=1e-5)
+                self.assertEqual(residuals, select_if_not_empty(residuals_3d, i), atol=1e-5, rtol=1e-5)
+                self.assertEqual(rank, select_if_not_empty(rank_3d, i), atol=1e-5, rtol=1e-5)
+                self.assertEqual(singular_values, select_if_not_empty(singular_values_3d, i), atol=1e-5, rtol=1e-5)
 
         def check_correctness_scipy(a, b, res, driver):
             if TEST_SCIPY and driver not in (None, 'gels'):
