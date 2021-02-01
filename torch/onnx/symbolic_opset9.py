@@ -1783,6 +1783,10 @@ def slice(g, self, *args):
             start = _parse_arg(start, 'i')
             end = _parse_arg(end, 'i')
             dim = _parse_arg(dim, 'i')
+            if start is None:
+                start = 0
+            if end is None:
+                end = 9223372036854775807
             return sym_help._slice_helper(g, self, axes=[dim], starts=[start], ends=[end])
     elif len(args) == 3:
         # aten::slice(t[] l, int start, int end, int step) -> t[]
@@ -1790,6 +1794,10 @@ def slice(g, self, *args):
         dim = 0
         start = _parse_arg(start, 'i')
         end = _parse_arg(end, 'i')
+        if start is None:
+            start = 0
+        if end is None:
+            end = 9223372036854775807
         return sym_help._slice_helper(g, self, axes=[dim], starts=[start], ends=[end])
     else:
         raise NotImplementedError("Unknown aten::slice signature")
