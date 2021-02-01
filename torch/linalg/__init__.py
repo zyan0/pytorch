@@ -360,6 +360,7 @@ Returns:
         - **solution** (*Tensor*): the least squares solution
         - **residuals** (*Tensor*):  if :math:`m > n` then for full rank matrices in :math:`a` the tensor encodes
             the squared residuals of the solutions, that is :math:`||ax - b||_F^2`.
+            If :math:`m <= n`, an empty tensor is returned instead.
         - **rank** (*Tensor*): the tensor of ranks of the matrix :math:`a` with shape ``a.shape[:-2]``.
             Non-empty if :attr:`driver` is one of (``'gelsy'``, ``'gelsd'``, ``'gelss'``).
         - **singular_values** (*Tensor*): the tensor of singular values
