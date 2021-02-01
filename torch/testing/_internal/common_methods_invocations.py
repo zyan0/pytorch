@@ -1798,6 +1798,7 @@ op_db: List[OpInfo] = [
             test_inplace_grad=False,
             supports_tensor_out=False,
             sample_inputs_func=sample_inputs_linalg_lstsq,
+            check_batched_grad=False,
             check_batched_gradgrad=False,
             decorators=[skipCUDAIfNoMagma, skipCPUIfNoLapack],
             skips=(
