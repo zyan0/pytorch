@@ -4,6 +4,9 @@ import torch
 # Sparse tests use double as the default dtype
 torch.set_default_dtype(torch.double)
 
+# TODO(alband) Remove this when this flag is not needed anymore
+torch._C._set_forward_AD_enabled(True)
+
 import itertools
 import functools
 import operator
@@ -289,7 +292,7 @@ class TestSparse(TestCase):
             def fn(x):
                 return x.to_dense()
             x.requires_grad_(True)
-            gradcheck(fn, (x,), check_sparse_nnz=True)
+            gradcheck(fn, (x,), check_sparse_nnz=True, check_forward=True)
 
         i = self.index_tensor([
             [0, 1, 2, 2],
@@ -415,7 +418,7 @@ class TestSparse(TestCase):
             def fn(x):
                 return x.to_dense()
             x.requires_grad_(True)
-            gradcheck(fn, (x,), check_sparse_nnz=True)
+            gradcheck(fn, (x,), check_sparse_nnz=True, check_forward=True)
 
         i = self.index_tensor([
             [0, 1, 2, 2],
@@ -1190,7 +1193,7 @@ class TestSparse(TestCase):
 
             def fn(S, D1, D2):
                 return torch.sparse.addmm(D1, S, D2)
-            gradcheck(fn, (S, D1, D2), check_sparse_nnz=True)
+            gradcheck(fn, (S, D1, D2), check_sparse_nnz=True, check_forward=True)
 
         test_shape(7, 8, 9, 20, False)
         test_shape(7, 8, 9, 20, True)
@@ -1209,7 +1212,7 @@ class TestSparse(TestCase):
 
             def fn(S, D):
                 return torch.sparse.mm(S, D)
-            gradcheck(fn, (S, D), check_sparse_nnz=True)
+            gradcheck(fn, (S, D), check_sparse_nnz=True, check_forward=True)
 
         test_shape(7, 8, 9, 20, False)
         test_shape(7, 8, 9, 20, True)
@@ -1372,7 +1375,7 @@ class TestSparse(TestCase):
                     if res.is_sparse:
                         res = res.to_dense()
                     return res
-                gradcheck(fn, (S,), check_sparse_nnz=True)
+                gradcheck(fn, (S,), check_sparse_nnz=True, check_forward=True)
 
             else:
                 S_sum = torch.sparse.sum(S, td)
@@ -1384,7 +1387,7 @@ class TestSparse(TestCase):
                     if res.is_sparse:
                         res = res.to_dense()
                     return res
-                gradcheck(fn, (S,), check_sparse_nnz=True)
+                gradcheck(fn, (S,), check_sparse_nnz=True, check_forward=True)
 
         nnz = 10
         sparse_dims = 2
