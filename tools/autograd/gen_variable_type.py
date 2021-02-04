@@ -302,7 +302,7 @@ isFwGradDefined(${req_inp})\
 
 FW_DERIVATIVE_DEFINED_GRAD_TEMPLATE = CodeTemplate("""\
 auto ${inp}_t_raw = toLegacyFwGrad(${inp});
-auto ${inp}_t = ${inp}_t_raw.defined() ? ${inp}_t_raw : at::zeros_like(${inp});
+auto ${inp}_t = ${inp}_t_raw.defined() ? ${inp}_t_raw : at::zeros_like(toLegacyTensor(${inp}));
 """)
 
 FW_DERIVATIVE_DEFINED_PRIMAL_TEMPLATE = CodeTemplate("""\

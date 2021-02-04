@@ -32,6 +32,7 @@ struct IndexRangeGenerator {
 bool isFwGradDefined(const c10::optional<Tensor>& t);
 Tensor toLegacyFwGrad(const c10::optional<Tensor>& t);
 Tensor toLegacyPrimal(const c10::optional<Tensor>& t);
+Tensor toLegacyTensor(const c10::optional<Tensor>& t);
 
 bool any_variable_defined(variable_list& variables);
 void copy_range(variable_list& out, IndexRange range, const at::Tensor & t);
@@ -207,6 +208,26 @@ infinitely_differentiable_native_layer_norm_backward(
     IntArrayRef normalized_shape,
     double eps,
     std::array<bool, 3> grad_input_mask);
+
+Tensor slow_conv_dilated2d_forward_grad(const Tensor& self_fw_grad, const Tensor& weight_fw_grad, IntArrayRef kernel_size, const Tensor& bias_fw_grad,
+        const Tensor& self, const Tensor& weight, IntArrayRef stride, IntArrayRef padding, IntArrayRef dilation, const Tensor& result);
+Tensor native_batch_norm_forward(const Tensor& input_fw_grad, const Tensor& input, const c10::optional<at::Tensor> weight,
+        const c10::optional<at::Tensor>  running_mean, const c10::optional<at::Tensor>  running_var, const Tensor& result1,
+        const Tensor& result2, bool training, float eps, const Tensor& weight_fw_grad, const Tensor& bias_fw_grad);
+Tensor max_pool2d_with_indices_forward(const Tensor& self_fw_grad, const Tensor& indices);
+Tensor _log_softmax_foward(const Tensor& self_fw_grad, const Tensor& result, int dim);
+Tensor stack_forward(at::TensorList tensors, int64_t dim);
+Tensor cat_forward(at::TensorList tensors, int64_t dim);
+Tensor max_forward(const Tensor& self_fw_grad, const Tensor& self, const Tensor& result);
+at::Tensor apply_loss_reduction(const at::Tensor& unreduced, int64_t reduction);
+Tensor binary_cross_entropy_with_logits_forward(const at::Tensor& self_fw_grad, const at::Tensor& target_fw_grad,
+        const at::Tensor& self, const at::Tensor& target, const c10::optional<at::Tensor> weight,
+        const c10::optional<at::Tensor> pos_weight, int64_t reduction);
+Tensor min_max_other_forward(const at::Tensor& self_fw_grad, const at::Tensor& other_fw_grad, const at::Tensor& self,
+        const at::Tensor& other, bool is_min);
+Tensor max_dim_forward(const Tensor& self_fw_grad, int64_t dim, const Tensor& indices, bool keepdim);
+
+
 
 
 } // namespace details
