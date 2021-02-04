@@ -31,6 +31,10 @@ from .gen_trace_type import (
     MANUAL_BACKEND, MANUAL_AUTOGRAD_AND_TRACER, MANUAL_AUTOGRAD,
     declare_returned_variables, tie_return_values, get_return_value, type_wrapper_name,
 )
+from .utils import IDENT_REGEX
+
+import warnings
+import re
 
 from tools.codegen.api.types import *
 from tools.codegen.api.autograd import *
@@ -39,7 +43,7 @@ from tools.codegen.code_template import CodeTemplate
 from tools.codegen.gen import with_native_function, parse_native_yaml, FileManager, mapMaybe
 from tools.codegen.model import *
 from tools.codegen.selective_build.selector import SelectiveBuilder
-from typing import Callable, List, Optional, Sequence, Tuple, Union
+from typing import Callable, List, Match, Optional, Sequence, Tuple, Union
 
 # We don't set or modify grad_fn on these methods. Generally, they return
 # tensors that have requires_grad=False. In-place functions listed here will
@@ -292,10 +296,59 @@ ${statements}
 #endif
 """)
 
+FW_DERIVATIVE_CHECK_TEMPLATE = CodeTemplate("""\
+isFwGradDefined(${req_inp})\
+""")
+
+FW_DERIVATIVE_DEFINED_GRAD_TEMPLATE = CodeTemplate("""\
+auto ${inp}_t_raw = toLegacyFwGrad(${inp});
+auto ${inp}_t = ${inp}_t_raw.defined() ? ${inp}_t_raw : at::zeros_like(${inp});
+""")
+
+FW_DERIVATIVE_DEFINED_PRIMAL_TEMPLATE = CodeTemplate("""\
+auto ${inp}_p = toLegacyPrimal(${inp});
+""")
+
+FW_DERIVATIVE_SETTER_TENSOR = CodeTemplate("""\
+if (${out_arg}_new_fw_grad.defined()) {
+  // The hardcoded 0 here will need to be updated once we support multiple levels.
+  ${out_arg}.set_fw_grad(${out_arg}_new_fw_grad, /* level */ 0, /* is_inplace_op */ ${is_inplace});
+}
+""")
+
+FW_DERIVATIVE_SETTER_TENSOR_LIST = CodeTemplate("""\
+TORCH_INTERNAL_ASSERT(${out_arg}.size() == ${out_arg}_new_fw_grad.size());
+for (auto i=0; i<${out_arg}.size(); ++i) {
+  if (${out_arg}_new_fw_grad[i].defined()) {
+  // The hardcoded 0 here will need to be updated once we support multiple levels.
+    ${out_arg}[i].set_fw_grad(${out_arg}_new_fw_grad[i], /* level */ 0, /* is_inplace_op */ ${is_inplace});
+  }
+}
+""")
+
+FW_DERIVATIVE_TEMPLATE = CodeTemplate("""\
+if (${requires_fw_grad}) {
+    ${unpacked_arguments}
+    auto ${out_arg}_new_fw_grad = ${formula};
+    ${fw_grad_setter}
+}
+""")
+
+FW_DERIVATIVE_FORBID_TEMPLATE = CodeTemplate("""\
+TORCH_CHECK(!(${cond}), "Trying to use forward AD with ${msg} that does not support it.");
+""")
+
+FW_DERIVATIVE_FORBID_LIST_TEMPLATE = CodeTemplate("""\
+for (const auto& _t: ${arg}) {
+    TORCH_CHECK(!(${cond}), "Trying to use forward AD with ${msg} that does not support it.");
+}
+""")
+
 @dataclass(frozen=True)
 class NativeFunctionWithDifferentiabilityInfo:
     func: NativeFunction
     info: Optional[DifferentiabilityInfo]
+    forward_derivatives: Sequence[ForwardDerivative]
 
 def gen_variable_type(
     out: str,
@@ -402,12 +455,14 @@ def emit_body(fn: NativeFunctionWithDifferentiabilityInfo) -> List[str]:
     assert dispatch_strategy(fn) == 'use_derived'
     f = fn.func
     info = fn.info
+    fw_derivatives = fn.forward_derivatives
 
     name = cpp.name(f.func)
     inplace = f.func.kind() == SchemaKind.inplace
     is_out_fn = f.func.kind() == SchemaKind.out
     returns_void = len(f.func.returns) == 0
     base_name = f.func.name.name.base  # TODO: should be str(f.func.name.name)?
+
     view_info = VIEW_FUNCTIONS.get(base_name, None)
     if view_info is None and base_name in RETURNS_VIEWS_OF_INPUT:
         view_info = "self"
@@ -476,9 +531,11 @@ def emit_body(fn: NativeFunctionWithDifferentiabilityInfo) -> List[str]:
     args_with_derivatives = find_args_with_derivatives(differentiable_inputs)
     differentiable_outputs = gen_differentiable_outputs(f)
 
-    requires_derivative = (
-        base_name not in DONT_REQUIRE_DERIVATIVE and name not in DONT_REQUIRE_DERIVATIVE and
-        len(differentiable_inputs) > 0 and len(differentiable_outputs) > 0)
+    undifferentiable = (base_name in DONT_REQUIRE_DERIVATIVE) or (name in DONT_REQUIRE_DERIVATIVE)
+
+    requires_derivative = (not undifferentiable) and (len(differentiable_inputs) > 0) and (len(differentiable_outputs) > 0)
+
+    requires_fw_derivatives = not undifferentiable and len(fw_derivatives) > 0
 
     if info is not None and info.has_derivatives and not requires_derivative:
         raise RuntimeError(f'ERROR: derivative ignored for {name} -- specified an autograd function without derivative')
@@ -712,6 +769,8 @@ def emit_body(fn: NativeFunctionWithDifferentiabilityInfo) -> List[str]:
 
             if len(differentiable_output_vars) == 0:
                 # no output is differentiable (.indices() for SparseTensors for example)
+                # We assume here that if nothing is backward differentiable, nothing is forward differentiable either
+                assert len(fw_derivatives) == 0
                 rhs_value = f'as_view({view_info}, {var}, /* is_bw_differentiable */ false, /* is_fw_differentiable */ false)'
             elif len(differentiable_output_vars) == 1:
                 # Single differentiable output (Tensor or Tensor[])
@@ -828,6 +887,71 @@ def emit_body(fn: NativeFunctionWithDifferentiabilityInfo) -> List[str]:
             return []
         return [f'increment_version({r});' for r in cpp.return_names(f)]
 
+    def emit_fw_derivatives() -> List[str]:
+        content: List[str] = []
+        for derivative in fw_derivatives:
+            res = derivative.var_name
+
+            requires_fw_grad = " || ".join([FW_DERIVATIVE_CHECK_TEMPLATE.substitute(req_inp=inp.name)
+                                           for inp in differentiable_inputs if inp.name in derivative.required_inputs_fw_grad])
+            if not requires_fw_grad:
+                # Handle functions like stack
+                # For these, we don't unpack anything and always call the user function
+                if not (len(differentiable_inputs) == 1 and is_tensor_list_type(differentiable_inputs[0].type)):
+                    raise RuntimeError(f'No differentiable input to "{name}" is a differentiable Tensor even though a '
+                                       'forward gradient formula has been defined for it. This case should only happen '
+                                       'for function that take a single TensorList as input. All other cases are not '
+                                       'supported right now.')
+                requires_fw_grad = "true"
+            unpacked_arguments = ""
+            for inp in differentiable_inputs:
+                if inp.name in derivative.required_inputs_fw_grad:
+                    if inp.cpp_type == 'Tensor &':
+                        warnings.warn(f'The formula for "{name}" might be using the original value of {inp.name} that is being '
+                                      'modified inplace. This can lead to wrong forward gradients.')
+                    unpacked_arguments += FW_DERIVATIVE_DEFINED_GRAD_TEMPLATE.substitute(inp=inp.name)
+                if inp.name in (derivative.required_inputs_primal or []):
+                    unpacked_arguments += FW_DERIVATIVE_DEFINED_PRIMAL_TEMPLATE.substitute(inp=inp.name)
+
+            if inplace:
+                is_inplace_str = "true"
+            else:
+                is_inplace_str = "false"
+
+            if isinstance(derivative.var_type, BaseType) and derivative.var_type.is_tensor_like():
+                fw_grad_setter = FW_DERIVATIVE_SETTER_TENSOR.substitute(out_arg=res, is_inplace=is_inplace_str)
+            elif isinstance(derivative.var_type, ListType) and derivative.var_type.is_tensor_like():
+                fw_grad_setter = FW_DERIVATIVE_SETTER_TENSOR_LIST.substitute(out_arg=res, is_inplace=is_inplace_str)
+            else:
+                raise RuntimeError("Unsupported output type for forward derivative")
+            # View ops create fw_grad that already is a view of the base's fw_grad so just use that
+            content.append(FW_DERIVATIVE_TEMPLATE.substitute(requires_fw_grad=requires_fw_grad, formula=derivative.formula, out_arg=res,
+                                                             unpacked_arguments=unpacked_arguments, fw_grad_setter=fw_grad_setter))
+        return content
+
+    def emit_forbid_fw_derivatives(is_inplace: bool = False) -> str:
+        def get_msg() -> str:
+            if is_inplace:
+                msg = name + " (because it is inplace)"
+            else:
+                msg = name
+            return msg
+        res = ""
+        to_check: List[str] = []
+        for inp in differentiable_inputs:
+            if is_tensor_type(inp.type):
+                to_check.append(FW_DERIVATIVE_CHECK_TEMPLATE.substitute(req_inp=inp.name))
+            elif is_tensor_list_type(inp.type):
+                cond = FW_DERIVATIVE_CHECK_TEMPLATE.substitute(req_inp="_t")
+                res += FW_DERIVATIVE_FORBID_LIST_TEMPLATE.substitute(arg=inp.name, cond=cond, msg=get_msg())
+            else:
+                raise RuntimeError(f'Unsupported input type for "{name}" when forbidding forward AD usage.')
+
+        if len(to_check) > 0:
+            cond = " || ".join(to_check)
+            res += FW_DERIVATIVE_FORBID_TEMPLATE.substitute(cond=cond, msg=get_msg())
+        return res
+
     body: List[str] = []
     unpack_args_stats, unpacked_bindings = unpack_args(f)
 
@@ -844,8 +968,20 @@ def emit_body(fn: NativeFunctionWithDifferentiabilityInfo) -> List[str]:
         # set_flags has to appear after version_counter, because rebase_history
         # requires that the counter is incremented before it is called
         body.append(emit_history())
-        body.append(emit_save_outputs())
         body.extend(emit_check_if_in_complex_autograd_allowlist())
+
+    if is_out_fn:
+        body.append(emit_forbid_fw_derivatives(is_inplace=True))
+    else:
+        if requires_fw_derivatives:
+            body.extend(emit_fw_derivatives())
+        else:
+            body.append(emit_forbid_fw_derivatives())
+
+    if requires_derivative:
+        # Save only after the forward AD has been set up
+        body.append(emit_save_outputs())
+
     if base_name in RESET_GRAD_ACCUMULATOR:
         # `inplace` implies that there is exactly one output named `self`,
         # so we can keep the generated code easy. If you need to
@@ -979,9 +1115,43 @@ def match_differentiability_info(
     result: List[NativeFunctionWithDifferentiabilityInfo] = []
     for f in native_functions:
         info, is_exact_match = find_info(f)
+
+        # Currently, the '.strides()' to 'strides_or_error' replacement does not support
+        # 'self' derivatives of an inplace function, so we must check for this case.
+        if f.func.kind() == SchemaKind.inplace and (info is not None):
+            for derivative in info.derivatives:
+                if 'self' in derivative.var_names:
+                    for saved_input in derivative.saved_inputs:
+                        assert 'strides_or_error' not in saved_input.expr, (
+                            "Calling '.strides()' in the 'self' derivative formula of an "
+                            f"in-place function is not supported: {f.func}")
+
+        # For functions that have a single def for out-of-place and inplace (like exp())
+        if info and info.forward_derivatives and is_exact_match:
+            forward_derivatives = info.forward_derivatives
+
+            if f.func.kind() == SchemaKind.inplace:
+                assert len(info.forward_derivatives) == 1  # Only single output inplace should exist
+                fw_info = info.forward_derivatives[0]
+
+                # replace "result" from the formula by self
+                def repl(m: Match[str]) -> str:
+                    return f'{m.group(1)}self{m.group(2)}'
+
+                forward_derivatives = [ForwardDerivative(
+                    formula=re.sub(IDENT_REGEX.format("result"), repl, fw_info.formula),
+                    var_name="self",
+                    var_type=fw_info.var_type,
+                    required_inputs_fw_grad=fw_info.required_inputs_fw_grad,
+                    required_inputs_primal=fw_info.required_inputs_primal), ]
+        else:
+            forward_derivatives = []
+
         result.append(NativeFunctionWithDifferentiabilityInfo(
             func=f,
             info=info,
+            forward_derivatives=forward_derivatives,
+
         ))
 
     return result
