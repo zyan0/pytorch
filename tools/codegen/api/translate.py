@@ -54,7 +54,8 @@ class UnsatError(RuntimeError):
 def translate(
     bindings: Sequence[Union[Expr, Binding]],
     goals: Sequence[Union[CType, Binding]],
-    *, method: bool = False
+    *, method: bool = False,
+    skip_possibly_redundant_memory_format: bool = False
 ) -> List[Expr]:
 
     binding_exprs: List[Expr] = []
@@ -148,6 +149,8 @@ Check this module for more information.
             memory_format = direct_solve(
                 OptionalCType(BaseCType("MemoryFormat", SpecialArgName.possibly_redundant_memory_format))
             )
+            if skip_possibly_redundant_memory_format:
+                return memory_format
             try:
                 options = direct_solve(options_ctype)
                 return f"c10::impl::check_tensor_options_and_extract_memory_format({options}, {memory_format})"

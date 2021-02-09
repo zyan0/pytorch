@@ -107,7 +107,7 @@ class RegisterDispatchKey:
             def generate_defn(cpp_sig: CppSignature) -> str:
                 return f"""
 {cpp_sig.defn()} {{
-return {sig.name()}({', '.join(e.expr for e in translate(cpp_sig.arguments(), sig.arguments()))});
+return {sig.name()}({', '.join(e.expr for e in translate(cpp_sig.arguments(), sig.arguments(), skip_possibly_redundant_memory_format=True))});
 }}
 """
             result = generate_defn(cpp_sig_group.signature)
