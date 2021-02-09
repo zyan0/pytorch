@@ -21,12 +21,15 @@ void main() {
     vec4 sum = vec4(0);
 
     for (int k = 0; k < uBlock.size.w; ++k) {
-      sum = fma(
-          texelFetch(uM1, ivec3(k, pos.y, pos.z), 0),
-          texelFetch(uM2, ivec3(pos.x, k, pos.z), 0),
-          sum);
+      vec4 texel1 = texelFetch(uM1, ivec3(k, pos.y, pos.z), 0);
+      vec4 texel2 = texelFetch(uM2, ivec3(pos.x, k, pos.z), 0);
+      sum = fma(texel1.xxzz, texel2.xyxy, sum);
+      sum = fma(texel1.yyww, texel2.zwzw, sum);
     }
 
-    imageStore(uOutput, pos, sum);
+    imageStore(
+        uOutput,
+        pos,
+        sum);
   }
 }
