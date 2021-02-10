@@ -674,8 +674,9 @@
   # resulting in essentially the same goal, i.e. producing an output with
   # requires_grad=False
 - name: linalg_lstsq(Tensor self, Tensor b, float? cond=None, *, str? driver=None) -> (Tensor solution, Tensor residuals, Tensor rank, Tensor singular_values)
-  self: non_differentiable
-  b: non_differentiable
+  self: not_implemented("linalg_lstsq")
+  b: not_implemented("linalg_lstsq")
+  output_differentiability: [True, True]
 
 - name: lt_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
   self: zeros_like(self)
