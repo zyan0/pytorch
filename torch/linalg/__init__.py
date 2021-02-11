@@ -372,7 +372,7 @@ torch.linalg.lstsq(input, b, cond=None, *, driver=None)
     -> (Tensor solution, Tensor residuals, Tensor rank, Tensor singular_values)
 
 Computes the least squares solution to the system with a batch of matrices :math:`a` (represented by :attr:`input`)
-and a batch of vectors/matrices :math:`b` such that
+and a batch of vectors or matrices :math:`b` such that
 
 .. math::
     x = \text{argmin}_x \|ax - b\|_F,
@@ -385,7 +385,7 @@ and is of shape :math:`(..., n, 1)` if :math:`b` is of shape :math:`(..., m)`.
 The batch sizes of :math:`x` is the broadcasted shape of the batch dimensions of :math:`a` and :math:`b`.
 
 .. note::
-    The case when :math:`m < n` is not supported on the GPU yet.
+    The case when :math:`m < n` is not supported on CUDA.
 
 Args:
     input (Tensor): the batch of left-hand side matrices :math:`a`
@@ -396,33 +396,35 @@ Args:
         for the rank-revealing drivers (see :attr:`driver`).
         Singular values :math:`s[i] \le cond * s[0]` are treated as zero.
         If :attr:`cond` is ``None`` or is smaller than zero,
-        the machine precision based on ``a.dtype`` is used.
+        the machine precision based on :attr:`input`'s dtype is used.
         Default: ``None``
     driver (str, optional): the name of the LAPACK/MAGMA driver that is used
         to compute the solution.
-        If the inputs are on the CPU, the valid values are
+        For CPU inputs the valid values are
         (``'gels'``, ``'gelsy'``, ``'gelsd``, ``'gelss'``, ``None``).
-        If the inptus are on the GPU, the valid values are (``'gels'``, ``None``).
+        For CUDA inputs the valid values are (``'gels'``, ``None``).
         If ``driver == None``, ``'gelsy'`` is used for CPU inputs and ``'gels'`` for GPU inputs.
         Default: ``None``
 
 .. note::
     Driver ``'gels'`` assumes only full-rank inputs, i.e. ``torch.matrix_rank(a) == min(m, n)``.
     Drivers ``'gelsy'``, ``'gelsd'``, ``'gelss'`` are rank-revealing and hence handle rank-deficient inputs.
-    ``'gelsy'`` is QR-based with column pivoting, and ``'gelsd'`` with ``'gelss'`` are SVD-based.
+    ``'gelsy'`` uses QR factorization with column pivoting, ``'gelsd'`` and ``'gelss'`` use SVD.
     ``'gelsy'`` is the fastest among the rank-revealing algorithms that also handles rank-deficient inputs.
 
 Returns:
     (Tensor, Tensor, Tensor, Tensor): a namedtuple (solution, residuals, rank, singular_values) containing:
         - **solution** (*Tensor*): the least squares solution
-        - **residuals** (*Tensor*):  if :math:`m > n` then for full rank matrices in :math:`a` the tensor encodes
-            the squared residuals of the solutions, that is :math:`||ax - b||_F^2`.
-            If :math:`m <= n`, an empty tensor is returned instead.
-        - **rank** (*Tensor*): the tensor of ranks of the matrix :math:`a` with shape ``a.shape[:-2]``.
-            Non-empty if :attr:`driver` is one of (``'gelsy'``, ``'gelsd'``, ``'gelss'``).
+        - **residuals** (*Tensor*):  if :math:`m > n` then for full rank matrices in :attr:`input` the tensor encodes
+            the squared residuals of the solutions, that is :math:`||\text{input} @ x - b||_F^2`.
+            If :math:`m \le n`, an empty tensor is returned instead.
+        - **rank** (*Tensor*): the tensor of ranks of the matrix :attr:`input` with shape ``input.shape[:-2]``.
+            Only computed if :attr:`driver` is one of (``'gelsy'``, ``'gelsd'``, ``'gelss'``),
+            an empty tensor is returned otherwise.
         - **singular_values** (*Tensor*): the tensor of singular values
-            of the matrix :math:`a` with shape ``a.shape[:-2] + (min(m, n),)``.
-            Non-empty if :attr:`driver` is one of (``'gelsd'``, ``'gelss'``)
+            of the matrix :attr:`input` with shape ``input.shape[:-2] + (min(m, n),)``.
+            Only computed if :attr:`driver` is one of (``'gelsd'``, ``'gelss'``),
+            an empty tensor is returend otherwise.
 
 Example::
 
