@@ -667,12 +667,6 @@
   self: not_implemented("lstsq")
   A: not_implemented("lstsq")
 
-  # we mark linalg_lstsq non_differentiable wrt to its Tensor inputs because,
-  # if marked not_implemented, an assertion is triggered in
-  # torch/csrc/autograd/utils.h:64 which suggests adding the function
-  # to the DONT_REQUIRE_DERIVATIVE list in tools/autograd/gen_variable_type.py,
-  # resulting in essentially the same goal, i.e. producing an output with
-  # requires_grad=False
 - name: linalg_lstsq(Tensor self, Tensor b, float? cond=None, *, str? driver=None) -> (Tensor solution, Tensor residuals, Tensor rank, Tensor singular_values)
   self: not_implemented("linalg_lstsq")
   b: not_implemented("linalg_lstsq")
