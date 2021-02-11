@@ -77,8 +77,8 @@ class TestNamedTupleAPI(TestCase):
             op(operators=['fake_quantize_per_channel_affine_cachemask'],
                input=(per_channel_scale, per_channel_zp, 1, 0, 255),
                names=('output', 'mask',), hasout=False),
-            op(operators=['linalg_lstsq'], input=(a,), names=('solution', 'residuals', 'rank', 'singular_values'), hasout=False),
             op(operators=['_unpack_dual'], input=(0,), names=('primal', 'tangent'), hasout=False),
+            op(operators=['linalg_lstsq'], input=(a,), names=('solution', 'residuals', 'rank', 'singular_values'), hasout=False),
         ]
 
         def get_func(f):

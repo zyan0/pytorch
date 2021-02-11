@@ -167,20 +167,20 @@ class TestLinalg(TestCase):
                 self.assertEqual(rank, select_if_not_empty(rank_3d, i), atol=1e-5, rtol=1e-5)
                 self.assertEqual(singular_values, select_if_not_empty(singular_values_3d, i), atol=1e-5, rtol=1e-5)
 
-        def check_correctness_scipy(a, b, res, driver):
+        def check_correctness_scipy(a, b, res, driver, cond):
             if TEST_SCIPY and driver not in (None, 'gels'):
                 import scipy.linalg
 
                 def scipy_ref(a, b):
-                    return scipy.linalg.lstsq(a, b, lapack_driver=driver)
+                    return scipy.linalg.lstsq(a, b, lapack_driver=driver, cond=cond)
                 check_correctness_ref(a, b, res, scipy_ref)
 
-        def check_correctness_numpy(a, b, res, driver):
+        def check_correctness_numpy(a, b, res, driver, cond):
             if driver in ('gelsd', 'gelss'):
                 import numpy.linalg
 
                 def numpy_ref(a, b):
-                    return numpy.linalg.lstsq(a, b, rcond=-1)
+                    return numpy.linalg.lstsq(a, b, rcond=-1 if cond is None else cond)
                 check_correctness_ref(a, b, res, numpy_ref)
 
         def check_ranks(a, ranks, cond=1e-7):
@@ -198,8 +198,13 @@ class TestLinalg(TestCase):
         m_l_n_sizes = [(m // 2, m) for m in ms]
         matrix_sizes = m_ge_n_sizes + (m_l_n_sizes if device == 'cpu' else [])
         batches = [(), (2,), (2, 2), (2, 2, 2)]
+        # we generate matrices with singular values sampled from a normal distribution,
+        # that is why we use `cond=1.0`, the mean to cut roughly half of all
+        # the singular values and compare whether torch.linalg.lstsq agrees with
+        # SciPy and NumPy.
+        cond = (None, 1.0)
 
-        for batch, matrix_size, driver in itertools.product(batches, matrix_sizes, drivers):
+        for batch, matrix_size, driver, cond in itertools.product(batches, matrix_sizes, drivers, cond):
             shape = batch + matrix_size
             a = random_well_conditioned_matrix(*shape, dtype=dtype, device=device)
             b = torch.rand(*shape, dtype=dtype, device=device)
@@ -210,8 +215,8 @@ class TestLinalg(TestCase):
             res = torch.linalg.lstsq(a, b, cond=cond, driver=driver)
             sol = res.solution.narrow(-2, 0, n)
 
-            check_correctness_scipy(a, b, res, driver)
-            check_correctness_numpy(a, b, res, driver)
+            check_correctness_scipy(a, b, res, driver, cond)
+            check_correctness_numpy(a, b, res, driver, cond)
 
             check_correctness(a, b, sol)
             if self.device_type == 'cpu' and driver != 'gels':

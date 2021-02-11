@@ -931,7 +931,7 @@ def sample_inputs_linalg_lstsq(op_info, device, dtype, requires_grad=False):
         # NOTE: inputs are not marked with `requires_grad` since
         # linalg_lstsq is not differentiable
         a = random_well_conditioned_matrix(*shape, dtype=dtype, device=device)
-        b = torch.rand(*shape, dtype=dtype, device=device)
+        b = make_tensor(shape, device, dtype, low=None, high=None)
         out.append(SampleInput((a, b)))
     return out
 
