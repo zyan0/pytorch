@@ -340,8 +340,7 @@ def try_ann_to_type(ann, loc):
         qualified_name = _qualified_name(ann)
         if _get_script_class(qualified_name) is not None:
             return ClassType(qualified_name)
-        ignored_builtin_classes = (torch.nn.Module, tuple, list, Exception)
-        if torch._jit_internal.can_compile_class(ann) and not issubclass(ann, ignored_builtin_classes):
+        if torch._jit_internal.can_compile_class(ann):
             torch.jit._script._recursive_compile_class(ann, loc)
             return ClassType(qualified_name)
 
