@@ -431,6 +431,55 @@ Examples::
             [1, 2, 2, 2]])
 """)
 
+multi_dot = _add_docstr(_linalg.linalg_multi_dot, r"""
+linalg.multi_dot(tensors, *, out=None)
+
+Efficiently multiplies two or more matrices given by :attr:`tensors` by
+selecting the matrix chain multiplication order that results in the least
+number of arithmetic operations.
+
+Every tensor in :attr:`tensors` must be 2D, except for the first and last which
+may be 1D. If the first tensor is a 1D vector of size `n` it is treated as a row vector
+of size `(1, n)`, similarly if the last tensor is a 1D vector of size `n` it is treated
+as a column vector of size `(n, 1)`.
+
+If the first tensor has size `(a, b)` and the last tensor has size `(c, d)` the
+output will have size `(a, d)`. However, if either tensor is 1D then the implied
+dimension of size `1` as described above is squeezed from the output. e.g. for tensors
+of size `(b)` and `(c, d)` the output will have size `(d)`.
+
+.. warning:: This function does not broadcast.
+
+.. note:: This function is implemented by chaining :func:`torch.mm` calls after
+          computing the optimal matrix multiplication order.
+
+.. note:: This function is similar to NumPy's `multi_dot` except that it requires the
+          first and last tensors to be either 1D or 2D. And because :func:`torch.dot`
+          only supports the 1D case of NumPy's `dot` function, this function calls
+          :func:`torch.mm` instead for the matrix multiplications.
+
+Args:
+    tensors (sequence of Tensors): two or more tensors to multiply. The first and last
+        tensors may be 1D or 2D. Every other tensor must be 2D.
+
+Keyword args:
+    out (Tensor, optional): The output tensor. Ignored if ``None``. Default: ``None``
+
+Examples::
+
+    >>> from torch.linalg import multi_dot
+    >>> multi_dot([torch.tensor([1, 2]), torch.tensor([2, 3])])
+    tensor(8)
+    >>> multi_dot([torch.tensor([[1, 2]]), torch.tensor([2, 3])])
+    tensor([8])
+    >>> multi_dot([torch.tensor([[1, 2]]), torch.tensor([[2], [3]])])
+    tensor([[8]])
+    >>> multi_dot([torch.tensor([[2, 4]]), torch.tensor([[1, 2, 3], [3, 2, 1]])])
+    tensor([[14, 12, 10]])
+    >>> multi_dot([torch.tensor([2, 4]), torch.tensor([[1, 2], [3, 1]]), torch.tensor([2, 1])])
+    tensor(36)
+""")
+
 norm = _add_docstr(_linalg.linalg_norm, r"""
 linalg.norm(input, ord=None, dim=None, keepdim=False, *, out=None, dtype=None) -> Tensor
 
