@@ -1592,7 +1592,7 @@ def exp(g, self):
 
 @parse_args('v', 'f', 'i')
 def dropout(g, input, p, train):
-    sym_help.assert_training_mode(train, "dropout")
+    sym_help.check_training_mode(train, "dropout")
     # in eval mode, dropout is non-op - if the node's train param is set to False, dropout is non-op
     if not sym_help._training_mode:
         return input
