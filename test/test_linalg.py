@@ -302,6 +302,16 @@ class TestLinalg(TestCase):
             torch.zeros(2, 2, 0, 2, dtype=dtype, device=device)
         )
 
+        # empty a and b
+        if torch.device(device).type == 'cpu':
+            # only CPU since CUDA does not support overdetermined systems
+            a = torch.rand(2, 2, 0, 3, dtype=dtype, device=device)
+            b = torch.rand(2, 2, 0, 3, dtype=dtype, device=device)
+            self.assertEqual(
+                torch.linalg.lstsq(a, b)[0],
+                torch.zeros(2, 2, 3, 3, dtype=dtype, device=device)
+            )
+
         a = torch.rand(2, 3, dtype=dtype, device=device)
         b = torch.rand(3, dtype=dtype, device=device)
 
