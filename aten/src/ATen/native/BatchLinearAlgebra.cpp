@@ -2654,8 +2654,11 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
   // Instead of returning undefined tensors which get exposed as
   // Nones in the Python interface, we return empty tensors.
   // This way we follow the convention of output types in the
-  // torch.linalg namespace
-  //
+  // torch.linalg namespace.
+  // NOTE: we run drivers only if both inputs are non-empty!
+  // Hence the code below explicitly handles each and every output
+  // if `self` is empty.
+
   // Numpy and Scipy always return ranks for empty matrices,
   // even for drivers which are not rank-revealing.
   auto batch_sizes = IntArrayRef(self.sizes().data(), self.dim() - 2);
@@ -2669,13 +2672,23 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
   // undefined residuals could only be an empty Tensor of shape (0)
   residuals = return_empty_if_undefined(residuals);
 
-  // undefined singular values is an empty Tensor of shape (*self.shape[:-2], 0)
-  auto singular_values_empty_shape = batch_sizes.vec();
-  singular_values_empty_shape.push_back(0);
-  singular_values = return_empty_if_undefined(
-    singular_values,
-    at::toValueType(self.scalar_type()),
-    singular_values_empty_shape);
+  if (!self.numel() 
+    && (driver_opt.value() == "gelss" || driver_opt.value() == "gelsd")) {
+    // when `self` is empty, return singular_values of shape
+    // (*self.shape[:-2], 0) only if driver is in ('gelss', 'gelsd')
+    auto singular_values_empty_shape = batch_sizes.vec();
+    singular_values_empty_shape.push_back(0);
+    singular_values = return_empty_if_undefined(
+      singular_values,
+      at::toValueType(self.scalar_type()),
+      singular_values_empty_shape);
+  }
+  else {
+    // otherwise return an empty tensor of shape (0)
+    singular_values = return_empty_if_undefined(
+      singular_values,
+      at::toValueType(self.scalar_type()));
+  }
 
   return std::make_tuple(x, residuals, rank, singular_values);
 }
