@@ -143,7 +143,7 @@ void initJitBackendBindings(PyObject* module) {
   //  torch._C._jit_to_backend("example_backend", module, spec)
   auto m = py::handle(module).cast<py::module>();
   m.def(
-      "_jit_to_backend",
+      "to_backend",
       [=](const std::string& backend_name,
           py::handle orig_module,
           const py::dict& method_compile_spec) {
@@ -155,7 +155,7 @@ void initJitBackendBindings(PyObject* module) {
       });
 
   m.def(
-      "_jit_to_backend_selective",
+      "to_backend_selective",
       [=](py::handle orig_module,
           const py::function& to_backend,
           const std::vector<std::string>& modules_to_lower) {

@@ -59,11 +59,11 @@ def export_opnames(m):
         have a LiteScriptModule and want to get the currently present
         list of ops call _export_operator_list instead.
     """
-    return torch._C._export_opnames(m._c)
+    return torch._C._jit._export_opnames(m._c)
 
 
 # torch.jit.Error
-Error = torch._C.JITException
+Error = torch._C._jit.JITException
 set_module(Error, "torch.jit")
 # This is not perfect but works in common cases
 Error.__name__ = "Error"
@@ -139,5 +139,5 @@ def isinstance(obj, target_type):
     return _isinstance(obj, target_type)
 
 
-if not torch._C._jit_init():
+if not torch._C._jit.init():
     raise RuntimeError("JIT initialization failed")

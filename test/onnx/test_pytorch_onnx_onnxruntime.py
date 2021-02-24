@@ -461,8 +461,8 @@ class TestONNXRuntime(unittest.TestCase):
 
     def test_paste_mask_in_image(self):
         # disable profiling
-        torch._C._jit_set_profiling_executor(False)
-        torch._C._jit_set_profiling_mode(False)
+        torch._C._jit.set_profiling_executor(False)
+        torch._C._jit.set_profiling_mode(False)
 
         masks = torch.rand(10, 1, 26, 26)
         boxes = torch.rand(10, 4)
@@ -512,8 +512,8 @@ class TestONNXRuntime(unittest.TestCase):
 
     def test_heatmaps_to_keypoints(self):
         # disable profiling
-        torch._C._jit_set_profiling_executor(False)
-        torch._C._jit_set_profiling_mode(False)
+        torch._C._jit.set_profiling_executor(False)
+        torch._C._jit.set_profiling_mode(False)
 
         maps = torch.rand(10, 1, 26, 26)
         rois = torch.rand(10, 4)
@@ -2759,7 +2759,7 @@ class TestONNXRuntime(unittest.TestCase):
         self.run_test(ScatterModel(), input=(input, indices, values))
 
         @torch.jit.script
-        def scatter_sum(src: torch.Tensor, index: torch.Tensor): 
+        def scatter_sum(src: torch.Tensor, index: torch.Tensor):
             size = src.size()
             out = torch.zeros(size, dtype=src.dtype)
             return out.scatter_add_(1, index, src)
@@ -5864,7 +5864,7 @@ class TestONNXRuntime(unittest.TestCase):
         model.ir_version = 0
 
         def check_proto():
-            torch._C._check_onnx_proto(model.SerializeToString())
+            torch._C._jit._check_onnx_proto(model.SerializeToString())
 
         self.assertRaises(RuntimeError, check_proto)
 

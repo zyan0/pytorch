@@ -7,7 +7,7 @@ from torch.testing._internal.common_utils import TestCase, run_tests
 from torch.testing._internal.jit_utils import get_forward, get_forward_graph
 from torch.utils.mobile_optimizer import *
 from torch.nn import functional as F
-from torch._C import MobileOptimizerType
+from torch._C._jit import MobileOptimizerType
 from torch.testing._internal.common_quantized import override_quantized_engine
 
 try:
@@ -16,7 +16,7 @@ try:
 except ImportError:
     HAS_TORCHVISION = False
 
-FileCheck = torch._C.FileCheck
+FileCheck = torch._C._jit.FileCheck
 
 class TestOptimizer(TestCase):
 
