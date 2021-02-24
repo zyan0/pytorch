@@ -1312,7 +1312,7 @@ def conv_transpose3d(g, input, weight, bias, stride, padding, output_padding, gr
 
 @parse_args('v', 'v', 'v', 'v', 'v', 'i', 'f', 'f', 'i')
 def batch_norm(g, input, weight, bias, running_mean, running_var, training, momentum, eps, cudnn_enabled):
-    sym_help.assert_training_mode(training, "batch_norm")
+    sym_help.check_training_mode(training, "batch_norm")
     batch_size = sym_help._get_tensor_dim_size(input, 0)
     channel_size = sym_help._get_tensor_dim_size(input, 1)
 
@@ -1331,7 +1331,7 @@ def batch_norm(g, input, weight, bias, running_mean, running_var, training, mome
             'torch.' + input.type().scalarType() + 'Tensor')
         bias = g.op("Constant", value_t=bias_value)
     # If track_running_stats is set to False batch statistics are instead used during evaluation time
-    if running_mean is None or sym_help._is_none(running_mean) or running_var is None or sym_help._is_none(running_var):
+    if training or running_mean is None or sym_help._is_none(running_mean) or running_var is None or sym_help._is_none(running_var):
         assert batch_size is not None and channel_size is not None
         reshape_in = g.op("Reshape", input,
                           g.op("Constant", value_t=torch.tensor([batch_size, channel_size, -1], dtype=torch.int64)))
@@ -1342,8 +1342,8 @@ def batch_norm(g, input, weight, bias, running_mean, running_var, training, mome
     out = g.op("BatchNormalization", input, weight, bias, running_mean, running_var,
                epsilon_f=eps,
                momentum_f=1 - momentum,
-               outputs=1 if not sym_help._training_mode else 5)
-    if not sym_help._training_mode:
+               outputs=1 if not training else 5)
+    if not training:
         return out
     else:
         res, new_running_mean, new_running_var, saved_mean, saved_var = out

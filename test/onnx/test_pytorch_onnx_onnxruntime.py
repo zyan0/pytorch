@@ -6053,46 +6053,90 @@ class TestONNXRuntime(unittest.TestCase):
         x = torch.randn(6, 4, 3, 3)
         self.run_test(FakeQuantizePerChannelModel(), (x))
 
+    @skipIfUnsupportedOpsetVersion([13])
     def test_batchnorm_training(self):
         class MyModule(torch.nn.Module):
             def __init__(self):
                 super(MyModule, self).__init__()
-                self.bn = torch.nn.BatchNorm2d(3, affine=True)
+                self.bn1 = torch.nn.BatchNorm2d(3, affine=False)
+                self.cv1 = torch.nn.Conv2d(3, 3, 10)
+                self.bn2 = torch.nn.BatchNorm2d(3, affine=True)
+                self.cv2 = torch.nn.Conv2d(3, 3, 10)
+                self.bn3 = torch.nn.BatchNorm2d(3, affine=False)
 
             def forward(self, x):
-                bn = self.bn(x)
-                return bn
+                x = self.bn1(x)
+                x = self.cv1(x)
+                x = self.bn2(x)
+                x = self.cv2(x)
+                x = self.bn3(x)
+                return x, self.bn3.running_mean, self.bn3.running_var
 
-        model = MyModule()
+        x = torch.randn(10, 3, 64, 64) * 2
+        model_export = MyModule()
+        model_export.train()
+        outs = model_export(x)
+        pytorch_out = [out.detach().numpy() for out in outs]
+        ort_sess = convert_to_onnx(model_export, input=(x,), opset_version=self.opset_version, example_outputs=outs,
+                                   training=torch.onnx.TrainingMode.TRAINING)
+
+        ort_outs = run_ort(ort_sess, input=(x,))
+        assert len(pytorch_out) == len(ort_outs)
+        [np.testing.assert_allclose(p_out, ort_out, atol=10e-3, rtol=10e-3) for p_out, ort_out in
+         zip(pytorch_out, ort_outs)]
+
+        model_export = torch.jit.script(MyModule())
+        model_export.train()
+        outs = model_export(x)
+        pytorch_out = [out.detach().numpy() for out in outs]
+        ort_sess = convert_to_onnx(model_export, input=(x,), opset_version=self.opset_version,
+                                   example_outputs=outs,
+                                   training=torch.onnx.TrainingMode.PRESERVE,
+                                   use_new_jit_passes=True, onnx_shape_inference=True)
+        ort_outs = run_ort(ort_sess, input=(x,))
+        assert len(pytorch_out) == len(ort_outs)
+        [np.testing.assert_allclose(p_out, ort_out, atol=10e-3, rtol=10e-3) for p_out, ort_out in
+         zip(pytorch_out, ort_outs)]
+
+    @skipIfUnsupportedOpsetVersion([13])
+    def test_batchnorm_training_fixed_layer(self):
+        class MyModule(torch.nn.Module):
+            def __init__(self):
+                super(MyModule, self).__init__()
+                self.bn1 = torch.nn.BatchNorm2d(3, affine=True)
+                self.cv1 = torch.nn.Conv2d(3, 3, 10)
+                self.bn2 = torch.nn.BatchNorm2d(3, affine=False)
+                self.cv2 = torch.nn.Conv2d(3, 3, 10)
+                self.bn3 = torch.nn.BatchNorm2d(3, affine=True)
+
+            def forward(self, x):
+                self.bn3.eval()
+                x = self.bn1(x)
+                x = self.cv1(x)
+                x = self.bn2(x)
+                x = self.cv2(x)
+                x = self.bn3(x)
+                return x
+
         x = torch.randn(10, 3, 128, 128)
 
-        model.train()
-        out = model(x)
-
-        # state after 1 train epoch
-        running_mean = model.bn.running_mean
-        running_var = model.bn.running_var
-        saved_mean = x.mean((0, 2, 3))
-        saved_var = x.var((0, 2, 3))
-
-        pytorch_out = [out.detach().numpy(),
-                       running_mean.cpu().numpy(), running_var.cpu().numpy(),
-                       saved_mean.cpu().numpy(), saved_var.cpu().numpy()]
-
         model_export = MyModule()
-        f = io.BytesIO()
+        model_export.train()
+        outs = model_export(x)
+        pytorch_out = [outs.detach()]
 
         ort_sess = convert_to_onnx(model_export, input=(x,), opset_version=self.opset_version,
                                    training=torch.onnx.TrainingMode.TRAINING)
         ort_outs = run_ort(ort_sess, input=(x,))
-        [np.testing.assert_allclose(p_out, ort_out, atol=10e-3, rtol=10e-3) for p_out, ort_out in zip(pytorch_out, ort_outs)]
+        assert len(pytorch_out) == len(ort_outs)
+        [np.testing.assert_allclose(p_out, ort_out, atol=10e-3, rtol=10e-3) for p_out, ort_out in
+         zip(pytorch_out, ort_outs)]
 
-        model_export = torch.jit.script(MyModule())
         ort_sess = convert_to_onnx(model_export, input=(x,), opset_version=self.opset_version,
-                                   example_outputs=out,
-                                   training=torch.onnx.TrainingMode.TRAINING,
+                                   training=torch.onnx.TrainingMode.PRESERVE,
                                    use_new_jit_passes=True, onnx_shape_inference=True)
         ort_outs = run_ort(ort_sess, input=(x,))
+        assert len(pytorch_out) == len(ort_outs)
         [np.testing.assert_allclose(p_out, ort_out, atol=10e-3, rtol=10e-3) for p_out, ort_out in
          zip(pytorch_out, ort_outs)]
 
