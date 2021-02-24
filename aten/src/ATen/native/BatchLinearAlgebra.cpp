@@ -2319,7 +2319,7 @@ struct LapackLstsqHelper {
     // only `?gels` is not rank-revealing
     if (LapackLstsqDriverType::Gels != driver_type) {
       if (!batch_shape.size()) {
-        rank = at::empty({1}, at::kLong);
+        rank = at::empty({}, at::kLong);
       }
       else {
         rank = at::empty(batch_shape, at::kLong);
@@ -2633,8 +2633,21 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
     x = b_working_copy.zero_().narrow(-2, 0, n);
   }
 
-  auto return_empty_if_undefined = [&self](Tensor& t) {
-    return t.defined() ? t : at::empty({0}, self.options());
+  auto return_empty_if_undefined = [&self](Tensor& t,
+      c10::optional<at::ScalarType> dtype = c10::nullopt,
+      c10::optional<std::vector<int64_t>> shape = c10::nullopt) {
+    if (t.defined()) {
+      return t;
+    }
+    else {
+      auto output_dtype = dtype.has_value() ? dtype.value() : self.scalar_type();
+      if (shape.has_value()) {
+        return at::empty(shape.value(), self.options().dtype(output_dtype));
+      }
+      else {
+        return at::empty({0}, self.options().dtype(output_dtype));
+      }
+    }
   };
 
   // Some output stays undefined for some values of driver.
@@ -2642,9 +2655,27 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> linalg_lstsq(
   // Nones in the Python interface, we return empty tensors.
   // This way we follow the convention of output types in the
   // torch.linalg namespace
+  //
+  // Numpy and Scipy always return ranks for empty matrices,
+  // even for drivers which are not rank-revealing.
+  auto batch_sizes = IntArrayRef(self.sizes().data(), self.dim() - 2);
+  if (self.numel()) {
+    rank = return_empty_if_undefined(rank, at::kLong);
+  }
+  else {
+    rank = at::zeros(batch_sizes, self.options().dtype(at::kLong));
+  }
+
+  // undefined residuals could only be an empty Tensor of shape (0)
   residuals = return_empty_if_undefined(residuals);
-  rank = return_empty_if_undefined(rank);
-  singular_values = return_empty_if_undefined(singular_values);
+
+  // undefined singular values is an empty Tensor of shape (*self.shape[:-2], 0)
+  auto singular_values_empty_shape = batch_sizes.vec();
+  singular_values_empty_shape.push_back(0);
+  singular_values = return_empty_if_undefined(
+    singular_values,
+    at::toValueType(self.scalar_type()),
+    singular_values_empty_shape);
 
   return std::make_tuple(x, residuals, rank, singular_values);
 }

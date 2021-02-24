@@ -145,14 +145,16 @@ class TestLinalg(TestCase):
             m = a.size(-2)
             n = a.size(-1)
             nrhs = b.size(-1)
-            a_3d = a.view(-1, m, n)
-            b_3d = b.view(-1, m, nrhs)
+            batch_size = int(np.prod(a.shape[:-2]))
+            if batch_size == 0:
+                batch_size = 1
+            a_3d = a.view(batch_size, m, n)
+            b_3d = b.view(batch_size, m, nrhs)
 
-            solution_3d = res.solution.view(-1, n, nrhs)
-            residuals_3d = apply_if_not_empty(res.residuals, lambda t: t.view(-1, nrhs))
-            rank_3d = apply_if_not_empty(res.rank, lambda t: t.view(-1))
-            singular_values_3d = apply_if_not_empty(res.singular_values, lambda t: t.view(-1, min(m, n)))
-            batch_size = a_3d.shape[0]
+            solution_3d = res.solution.view(batch_size, n, nrhs)
+            residuals_2d = apply_if_not_empty(res.residuals, lambda t: t.view(-1, nrhs))
+            rank_1d = apply_if_not_empty(res.rank, lambda t: t.view(-1))
+            singular_values_2d = res.singular_values.view(batch_size, res.singular_values.shape[-1])
 
             for i in range(batch_size):
                 sol, residuals, rank, singular_values = ref(
@@ -162,10 +164,10 @@ class TestLinalg(TestCase):
                 # Singular values are None when lapack_driver='gelsy' in SciPy
                 if singular_values is None:
                     singular_values = []
-                self.assertEqual(sol, select_if_not_empty(solution_3d, i), atol=1e-5, rtol=1e-5)
-                self.assertEqual(residuals, select_if_not_empty(residuals_3d, i), atol=1e-5, rtol=1e-5)
-                self.assertEqual(rank, select_if_not_empty(rank_3d, i), atol=1e-5, rtol=1e-5)
-                self.assertEqual(singular_values, select_if_not_empty(singular_values_3d, i), atol=1e-5, rtol=1e-5)
+                self.assertEqual(sol, solution_3d.select(0, i), atol=1e-5, rtol=1e-5)
+                self.assertEqual(residuals, select_if_not_empty(residuals_2d, i), atol=1e-5, rtol=1e-5)
+                self.assertEqual(rank, select_if_not_empty(rank_1d, i), atol=1e-5, rtol=1e-5)
+                self.assertEqual(singular_values, singular_values_2d.select(0, i), atol=1e-5, rtol=1e-5)
 
         def check_correctness_scipy(a, b, res, driver, cond):
             if TEST_SCIPY and driver not in (None, 'gels'):
@@ -185,14 +187,13 @@ class TestLinalg(TestCase):
 
         def check_ranks(a, ranks, cond=1e-7):
             ranks2 = torch.matrix_rank(a, tol=cond)
-            ranks2 = ranks2.unsqueeze(0) if ranks2.dim() == 0 else ranks2
             self.assertEqual(ranks, ranks2)
 
         def check_singular_values(a, sv):
             sv2 = a.svd()[1]
             self.assertEqual(sv, sv2)
 
-        ms = [2 ** i for i in range(1, 5)]
+        ms = [2 ** i for i in range(5)]
         m_ge_n_sizes = [(m, m // 2) for m in ms] + [(m, m) for m in ms]
         # cases m < n are only supported on CPU
         m_l_n_sizes = [(m // 2, m) for m in ms]
