@@ -240,7 +240,7 @@ class TestLinalg(TestCase):
             sol2 = a.pinverse() @ b
             self.assertEqual(sol, sol2, rtol=1e-5, atol=1e-5)
 
-        ms = [2 ** i for i in range(1, 5)]
+        ms = [2 ** i for i in range(5)]
         batches = [(), (0,), (2,), (2, 2), (2, 2, 2)]
         # the case when a single matrix is batch-broadcasted over the rhs
         for m, batch in itertools.product(ms, batches):
