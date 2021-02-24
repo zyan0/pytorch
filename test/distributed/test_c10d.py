@@ -1,5 +1,4 @@
 import copy
-import logging
 import math
 import operator
 import os
@@ -3790,32 +3789,12 @@ class DistributedDataParallelTest(MultiProcessTestCase):
         # without the comm_hook, result would be 0.25 * torch.ones(2, 2).
         self._run_and_verify_hook(gpu_model, 8, 2 * torch.ones(2, 2))
 
-    def _test_ddp_comm_hook_allreduce_hook_nccl(self, gradient_as_bucket_view=False):
+    def _test_stateless_ddp_comm_hooks_nccl(self, gradient_as_bucket_view=False):
         """
-        This unit test verifies whether a DDP communication hook that just calls
-        allreduce gives the same result with the case of no hook registered.
-        Without the then callback, the future_value in reducer is no longer
-        a PyObject, and this unit test verifies future_value is properly checked.
-        """
-        store = c10d.FileStore(self.file_name, self.world_size)
-        process_group = c10d.ProcessGroupNCCL(store, self.rank, self.world_size)
-
-        def allreduce_hook(state: object, bucket: dist._GradBucket) -> torch._C.Future:
-            tensors = [t / self.world_size for t in bucket.get_tensors()]
-            return process_group.allreduce(tensors).get_future()
-
-        # Get GPU model with allreduce_hook registered.
-        gpu_model = self._gpu_model_with_ddp_comm_hook(
-            process_group, allreduce_hook, gradient_as_bucket_view
-        )
-
-        # check whether the grads are equal to what DDP without hook would return.
-        self._run_and_verify_hook(gpu_model, 8, 0.25 * torch.ones(2, 2))
-
-    def _test_default_ddp_comm_hooks_nccl(self, gradient_as_bucket_view=False):
-        """
-        This unit test verifies whether default Python DDP communication hooks ALLREDUCE and FP16_COMPRESS
+        This unit test verifies whether stateless Python DDP communication hooks,
+        which do not require any state information besides an optional process group,
         can give the same result with the case of no hook registered.
+        These hooks include `allreduce_hook` and `fp16_compress_hook`.
         """
         store = c10d.FileStore(self.file_name, self.world_size)
         process_group = c10d.ProcessGroupNCCL(store, self.rank, self.world_size)
@@ -3832,6 +3811,36 @@ class DistributedDataParallelTest(MultiProcessTestCase):
 
             # check whether the grads are equal to what DDP without hook would return.
             self._run_and_verify_hook(gpu_model, 8, 0.25 * torch.ones(2, 2))
+
+    def _test_allreduce_first_k_steps_ddp_comm_hook_nccl(
+        self, gradient_as_bucket_view=False
+    ):
+        """
+        This unit test verifies whether `allreduce_first_k_steps_hook`
+        can give the same result with the case of no hook registered.
+        """
+        # TODO: Since `_run_and_verify_hook` only runs one step.
+        # This test only tests a special case, where post-local SGD is equivalent to DDP
+        # if there are too few steps and local SGD does not start at all.
+        # Need to add another test case that involves local SGD.
+        store = c10d.FileStore(self.file_name, self.world_size)
+        process_group = c10d.ProcessGroupNCCL(store, self.rank, self.world_size)
+
+        # Get GPU model with the hook registered.
+        state = default.AllReduceFirstKStepsState(
+            process_group=process_group,
+            # Should be equivalent to allreduce for the first K steps.
+            k=1,
+        )
+        gpu_model = self._gpu_model_with_ddp_comm_hook(
+            process_group,
+            default.allreduce_first_k_steps_hook,
+            gradient_as_bucket_view,
+            state,
+        )
+
+        # check whether the grads are equal to what DDP without hook would return.
+        self._run_and_verify_hook(gpu_model, 8, 0.25 * torch.ones(2, 2))
 
     def _test_powerSGD_ddp_comm_hook_nccl(self, gradient_as_bucket_view=False):
         """
@@ -3880,13 +3889,8 @@ class DistributedDataParallelTest(MultiProcessTestCase):
 
     @requires_nccl()
     @skip_if_lt_x_gpu(2)
-    def test_ddp_comm_hook_allreduce_hook_nccl(self):
-        self._test_ddp_comm_hook_allreduce_hook_nccl()
-
-    @requires_nccl()
-    @skip_if_lt_x_gpu(2)
-    def test_default_ddp_comm_hooks_nccl(self):
-        self._test_default_ddp_comm_hooks_nccl()
+    def test_stateless_ddp_comm_hooks_nccl(self):
+        self._test_stateless_ddp_comm_hooks_nccl()
 
     @requires_nccl()
     @skip_if_lt_x_gpu(2)
@@ -3895,13 +3899,13 @@ class DistributedDataParallelTest(MultiProcessTestCase):
 
     @requires_nccl()
     @skip_if_lt_x_gpu(2)
-    def test_powerSGD_ddp_comm_hook_nccl(self):
-        self._test_powerSGD_ddp_comm_hook_nccl()
+    def test_allreduce_first_k_steps_ddp_comm_hook_nccl(self):
+        self._test_allreduce_first_k_steps_ddp_comm_hook_nccl()
 
     @requires_nccl()
     @skip_if_lt_x_gpu(2)
-    def test_ddp_comm_hook_allreduce_hook_nccl_grad_is_view(self):
-        self._test_ddp_comm_hook_allreduce_hook_nccl(gradient_as_bucket_view=True)
+    def test_powerSGD_ddp_comm_hook_nccl(self):
+        self._test_powerSGD_ddp_comm_hook_nccl()
 
     def test_invalid_powerSGD_state(self):
         for start_powerSGD_iter, use_error_feedback, warm_start in product([0, 1], [True, False], [True, False]):
@@ -3921,13 +3925,18 @@ class DistributedDataParallelTest(MultiProcessTestCase):
 
     @requires_nccl()
     @skip_if_lt_x_gpu(2)
-    def test_default_ddp_comm_hooks_nccl_is_view(self):
-        self._test_default_ddp_comm_hooks_nccl(gradient_as_bucket_view=True)
+    def test_stateless_ddp_comm_hooks_nccl_is_view(self):
+        self._test_stateless_ddp_comm_hooks_nccl(gradient_as_bucket_view=True)
 
     @requires_nccl()
     @skip_if_lt_x_gpu(2)
     def test_builtin_ddp_comm_hooks_nccl_grad_is_view(self):
         self._test_builtin_ddp_comm_hooks_nccl(gradient_as_bucket_view=True)
+
+    @requires_nccl()
+    @skip_if_lt_x_gpu(2)
+    def test_allreduce_first_k_steps_ddp_comm_hook_nccl_grad_is_view(self):
+        self._test_allreduce_first_k_steps_ddp_comm_hook_nccl(gradient_as_bucket_view=True)
 
     @requires_nccl()
     @skip_if_lt_x_gpu(2)
