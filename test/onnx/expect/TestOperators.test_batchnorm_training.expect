@@ -3,17 +3,116 @@ producer_name: "pytorch"
 producer_version: "CURRENT_VERSION"
 graph {
   node {
+    output: "6"
+    name: "Constant_0"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 3
+        data_type: 7
+        raw_data: "\002\000\000\000\000\000\000\000\002\000\000\000\000\000\000\000\377\377\377\377\377\377\377\377"
+      }
+      type: TENSOR
+    }
+  }
+  node {
+    input: "input"
+    input: "6"
+    output: "7"
+    name: "Reshape_1"
+    op_type: "Reshape"
+  }
+  node {
+    input: "7"
+    output: "8"
+    name: "Transpose_2"
+    op_type: "Transpose"
+    attribute {
+      name: "perm"
+      ints: 0
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    input: "8"
+    output: "9"
+    name: "ReduceMean_3"
+    op_type: "ReduceMean"
+    attribute {
+      name: "axes"
+      ints: 0
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "keepdims"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "8"
+    output: "10"
+    name: "ReduceMean_4"
+    op_type: "ReduceMean"
+    attribute {
+      name: "axes"
+      ints: 0
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "keepdims"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    input: "8"
+    input: "10"
+    output: "11"
+    name: "Sub_5"
+    op_type: "Sub"
+  }
+  node {
+    input: "11"
+    input: "11"
+    output: "12"
+    name: "Mul_6"
+    op_type: "Mul"
+  }
+  node {
+    input: "12"
+    output: "13"
+    name: "ReduceMean_7"
+    op_type: "ReduceMean"
+    attribute {
+      name: "axes"
+      ints: 0
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "keepdims"
+      i: 0
+      type: INT
+    }
+  }
+  node {
     input: "input"
     input: "weight"
     input: "bias"
-    input: "running_mean"
-    input: "running_var"
-    output: "6"
-    output: "7"
-    output: "8"
-    output: "batch_norm_dead_output-13"
-    output: "batch_norm_dead_output-14"
-    name: "BatchNormalization_0"
+    input: "9"
+    input: "13"
+    output: "14"
+    output: "15"
+    output: "16"
+    output: "batch_norm_dead_output-26"
+    output: "batch_norm_dead_output-27"
+    name: "BatchNormalization_8"
     op_type: "BatchNormalization"
     attribute {
       name: "epsilon"
@@ -38,18 +137,6 @@ graph {
     data_type: 1
     name: "bias"
     raw_data: "\000\000\000\000\000\000\000\000"
-  }
-  initializer {
-    dims: 2
-    data_type: 1
-    name: "running_mean"
-    raw_data: "\315\314\314=\315\314\314="
-  }
-  initializer {
-    dims: 2
-    data_type: 1
-    name: "running_var"
-    raw_data: "fff?fff?"
   }
   input {
     name: "input"
@@ -99,34 +186,8 @@ graph {
       }
     }
   }
-  input {
-    name: "running_mean"
-    type {
-      tensor_type {
-        elem_type: 1
-        shape {
-          dim {
-            dim_value: 2
-          }
-        }
-      }
-    }
-  }
-  input {
-    name: "running_var"
-    type {
-      tensor_type {
-        elem_type: 1
-        shape {
-          dim {
-            dim_value: 2
-          }
-        }
-      }
-    }
-  }
   output {
-    name: "6"
+    name: "14"
     type {
       tensor_type {
         elem_type: 1
