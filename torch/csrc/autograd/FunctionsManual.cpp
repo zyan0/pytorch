@@ -2155,7 +2155,8 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
   // eigenvalues_contribs := D_grad,
   // eigenvectors_contribs := (U^H U_grad - U^H U (U^H U_grad * I)) * F.conj().
   // The contributions from the eigenvectors and the eigenvalues are computed below,
-  // and then we solve a system U^H (eigenvalues_contribs + eigenvectors_contribs) = U^H
+  // and then we solve the system
+  // U^H A_grad = (eigenvalues_contribs + eigenvectors_contribs) U_H
   // to produce A_grad.
 
   // contribution from the eigenvectors
