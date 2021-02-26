@@ -1,5 +1,4 @@
 import copy
-import logging
 import math
 import operator
 import os
@@ -350,7 +349,7 @@ class TCPStoreTest(TestCase, StoreTestBase):
         store.set("key0", "value0")
         self.assertEqual(b"value0", store.get("key0"))
         old_value_result = store.compare_set("key0", "wrong_old_value", "new_value0")
-        self.assertEqual(b"wrong_old_value", old_value_result)
+        self.assertEqual(b"value0", old_value_result)
         self.assertEqual(b"value0", store.get("key0"))
         new_value_result = store.compare_set("key0", "value0", "new_value0")
         self.assertEqual(b"new_value0", new_value_result)
@@ -381,7 +380,7 @@ class TCPStoreTest(TestCase, StoreTestBase):
         server_store.set("key", "value")
         for (i, p) in enumerate(processes):
             # This is the exit code processes exit with if they encountered an exception.
-            self.assertNotEqual(p.exitcode, MultiProcessTestCase.TEST_ERROR_EXIT_CODE,
+            self.assertNotEqual(p.exitcode, MultiProcessTestCase.TEST_ERROR_EXIT_CODE, 
                                 "Process {} terminated with exit code {}. Check logs for exception stacktrace."
                                 .format(i, p.exitcode))
             p.join()
@@ -400,7 +399,7 @@ class TCPStoreTest(TestCase, StoreTestBase):
             p.start()
         for (i, p) in enumerate(processes):
             # This is the exit code processes exit with if they encountered an exception.
-            self.assertNotEqual(p.exitcode, MultiProcessTestCase.TEST_ERROR_EXIT_CODE,
+            self.assertNotEqual(p.exitcode, MultiProcessTestCase.TEST_ERROR_EXIT_CODE, 
                                 "Process {} terminated with exit code {}. Check logs for exception stacktrace."
                                 .format(i, p.exitcode))
             p.join()
@@ -578,19 +577,6 @@ class RendezvousEnvTest(TestCase):
 
         # check with get
         self.assertEqual(b"value0", store0.get("key0"))
-
-    @retry_on_connect_failures
-    def test_logging_init(self):
-        os.environ.update({"WORLD_SIZE": "1"})
-        os.environ.update({"MASTER_ADDR": "127.0.0.1"})
-        os.environ.update({"MASTER_PORT": str(common.find_free_port())})
-        os.environ.update({"RANK": "0"})
-
-        handlers_before = logging.root.handlers
-        c10d.init_process_group(backend="gloo", init_method="env://")
-        handlers_after = logging.root.handlers
-        self.assertEqual(handlers_before, handlers_after)
-        c10d.destroy_process_group()
 
 
 class RendezvousFileTest(TestCase):
@@ -4716,6 +4702,32 @@ class CommTest(MultiProcessTestCase):
 
         with self.assertRaisesRegex(RuntimeError, "device_ids not supported"):
             c10d.barrier(device_ids=[self.rank])
+
+    def test_distributed_debug_mode(self):
+        # Default should be off
+        default_debug_mode = dist._get_debug_mode()
+        self.assertEqual(default_debug_mode, dist._DistributedDebugMode.OFF)
+        mapping = {
+            "OFF": dist._DistributedDebugMode.OFF,
+            "INFO": dist._DistributedDebugMode.INFO,
+            "DETAIL": dist._DistributedDebugMode.DETAIL,
+        }
+        invalid_debug_modes = ["foo", 0, 1, -1]
+
+        for mode in mapping.keys():
+            os.environ["TORCH_DISTRIBUTED_DEBUG"] = str(mode)
+            set_debug_mode = dist._get_debug_mode()
+            self.assertEqual(
+                set_debug_mode,
+                mapping[mode],
+                f"Expected {mode} to map to {mapping[mode]} but got {set_debug_mode}"
+            )
+
+        for mode in invalid_debug_modes:
+            os.environ["TORCH_DISTRIBUTED_DEBUG"] = str(mode)
+            with self.assertRaisesRegex(ValueError, f"Invalid value {str(mode)}"):
+                dist._get_debug_mode()
+
 
 if __name__ == '__main__':
     assert (
