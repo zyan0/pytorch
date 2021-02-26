@@ -2071,7 +2071,7 @@ Tensor svd_backward(const std::vector<torch::autograd::Variable> &grads, const T
 // The implementation follows:
 // "An extended collection of matrix derivative results for forward and reverse mode algorithmic differentiation"
 // https://people.maths.ox.ac.uk/gilesm/files/NA-08-01.pdf
-// However, the reference does not cover constraints on eigenvectors to have 1-norm.
+// However, the reference does not cover the constraints on eigenvectors to have 1-norm.
 // See the details below.
 Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const Tensor& self,
                     bool eigenvectors, const Tensor& lambda, const Tensor& u) {
@@ -2101,6 +2101,10 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
     // path for torch.linalg.eig with always a complex tensor of eigenvalues
     else {
       no_imag_eigenvalues = at::allclose(at::imag(D), zeros);
+      // insert an additional dimension to be compatible with torch.eig.
+      // Recall that it produces 2D tensors.
+      // We extract only the real parts as there is no support for
+      // complex eigenvalues with real inputs yet.
       D = at::real(D).unsqueeze(-1);
       D_grad = at::real(D_grad).unsqueeze(-1);
     }
@@ -2130,7 +2134,7 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
   // Adapting the result from the reference above for the complex input, we get:
   //
   // A_grad = U^{-H} (D_grad + F.conj() * (U^H U_grad)) U^H,
-  // where M^H := (M.transpose(-2, -1)).conj() and * is the Haramard product.
+  // where M^H := (M.transpose(-2, -1)).conj() and * is the Hadamard product.
   //
   // torch.eig/torch.linalg.eig produce eigenvectors which are
   // normalized to 1 norm, and the reference does not take that into account.
