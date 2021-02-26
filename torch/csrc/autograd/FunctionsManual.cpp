@@ -2148,7 +2148,7 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
   // Now, the value of dU which does not take this constraint into consideration
   // comes straight from the reference:
   // dU = U(F * U^{-1} dA U).
-  // To make sure that U^H dU * I = 0, and using U^H U * I = 1 (normalization),
+  // To make sure that U^H dU * I = 0, and using U^H U * I = I (normalization),
   // we propose a modifed forward AD for U:
   // dU_new = dU - U(U^H dU * I) (think of Gram-Schmidt)
   //
