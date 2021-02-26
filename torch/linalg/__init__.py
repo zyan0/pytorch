@@ -412,6 +412,12 @@ Args:
     ``'gelsy'`` uses QR factorization with column pivoting, ``'gelsd'`` and ``'gelss'`` use SVD.
     ``'gelsy'`` is the fastest among the rank-revealing algorithms that also handles rank-deficient inputs.
 
+.. warning::
+    The default value for :attr:`cond` is subject to a potential change.
+    It is therefore recommended to use some fixed value to avoid potential
+    issues upon the library update.
+
+
 Returns:
     (Tensor, Tensor, Tensor, Tensor): a namedtuple (solution, residuals, rank, singular_values) containing:
         - **solution** (*Tensor*): the least squares solution
