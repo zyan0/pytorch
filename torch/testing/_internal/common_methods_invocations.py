@@ -2396,6 +2396,7 @@ op_db: List[OpInfo] = [
            decorators=[
                skipCUDAIfNoMagma,
                skipCPUIfNoLapack,
+               skipCUDAIfRocm
            ],),
     OpInfo('svd',
            op=torch.svd,
