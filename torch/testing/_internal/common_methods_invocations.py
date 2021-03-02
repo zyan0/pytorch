@@ -1221,7 +1221,7 @@ def sample_inputs_eig(op_info, device, dtype, requires_grad=False):
             # This, however, makes the eigenvector backward computation process
             # rather unstable unless the objective function is gauge-invariant,
             # that is if f(z) == f(|z|), for example.
-            # Hence for complex inputs we ignore the phases and check only
+            # Hence for complex inputs we ignore the phases and return only
             # the absolute values.
             return eigvals, eigvecs.abs()
         else:
