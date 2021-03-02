@@ -2096,11 +2096,11 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
     // path for torch.eig with always a "real" 2D tensor of eigenvalues
     if (!D.is_complex()) {
       // narrow extracts the column corresponding to the imaginary part
-      is_imag_eigvals_zero = (D.narrow(-1, 1, 1) == 0.0).max().item<bool>();
+      is_imag_eigvals_zero = (D.narrow(-1, 1, 1) == 0.0).min().item<bool>();
     }
     // path for torch.linalg.eig with always a complex tensor of eigenvalues
     else {
-      is_imag_eigvals_zero = (at::imag(D) == 0.0).max().item<bool>();
+      is_imag_eigvals_zero = (at::imag(D) == 0.0).min().item<bool>();
       // insert an additional dimension to be compatible with torch.eig.
       // Recall that it produces 2D tensors.
       // We extract only the real parts as there is no support for
