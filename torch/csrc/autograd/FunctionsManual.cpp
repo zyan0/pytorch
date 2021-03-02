@@ -2092,16 +2092,15 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
   // components of eigenvalues, while torch.linalg.eig will most likely always
   // return complex eigenvalues.
   if (!self.is_complex()) {
-    auto zeros = at::zeros({1}, D.options());
     auto is_imag_eigvals_zero = false;
     // path for torch.eig with always a "real" 2D tensor of eigenvalues
     if (!D.is_complex()) {
       // narrow extracts the column corresponding to the imaginary part
-      is_imag_eigvals_zero = at::allclose(D.narrow(-1, 1, 1), zeros);
+      is_imag_eigvals_zero = (D.narrow(-1, 1, 1) == 0.0).max().item<bool>();
     }
     // path for torch.linalg.eig with always a complex tensor of eigenvalues
     else {
-      is_imag_eigvals_zero = at::allclose(at::imag(D), zeros);
+      is_imag_eigvals_zero = (at::imag(D) == 0.0).max().item<bool>();
       // insert an additional dimension to be compatible with torch.eig.
       // Recall that it produces 2D tensors.
       // We extract only the real parts as there is no support for
@@ -2127,7 +2126,7 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
   }
 
   if (!D_grad.defined() && !U_grad.defined()) {
-    return at::zeros_like(self, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+    return at::zeros_like(self, at::MemoryFormat::Contiguous);
   }
 
   auto Uh = U.transpose(-2, -1).conj();
@@ -2135,7 +2134,7 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
   // Adapting the result from the reference above for the complex input, we get:
   //
   // A_grad = U^{-H} (D_grad + F.conj() * (U^H U_grad)) U^H,
-  // where M^H := (M.transpose(-2, -1)).conj() and * is the Hadamard product.
+  // where M^H := (M.transpose(-2, -1)).conj() and * is the Hadamard (element-wise) product.
   //
   // torch.eig/torch.linalg.eig produce eigenvectors which are
   // normalized to 1 norm, and the reference does not take that into account.
@@ -2195,7 +2194,7 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
     U_contrib = (U_grad_proj_onto_U - Uh_U * U_grad_proj_onto_U.diagonal(0, -2, -1).unsqueeze(-2)) * F.conj();
   }
   else {
-    U_contrib = at::zeros_like(self, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+    U_contrib = at::zeros_like(self, at::MemoryFormat::Contiguous);
   }
 
   // contributions from the eigenvalues
@@ -2205,12 +2204,10 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
     D_contrib = D_grad.narrow(-1, 0, 1);
   }
   else {
-    D_contrib = at::zeros_like(D, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+    D_contrib = at::zeros_like(D, at::MemoryFormat::Contiguous);
   }
 
-  Tensor result;
-  std::tie(result, std::ignore) = at::solve(at::matmul(U_contrib, Uh) + D_contrib * Uh, Uh);
-  return result;
+  return at::linalg_solve(Uh, at::matmul(U_contrib, Uh) + D_contrib * Uh);
 }
 
 // http://eprints.maths.ox.ac.uk/1079/1/NA-08-01.pdf
