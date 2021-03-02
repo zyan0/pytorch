@@ -2074,14 +2074,14 @@ Tensor svd_backward(const std::vector<torch::autograd::Variable> &grads, const T
 // However, the reference does not cover the constraints on eigenvectors to have 1-norm.
 // See the details below.
 Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const Tensor& self,
-                    bool eigenvectors, const Tensor& lambda, const Tensor& u) {
-  TORCH_CHECK(eigenvectors,
+                    bool is_eigvec_tensor_nonempty, const Tensor& eigenvalues, const Tensor& eigenvectors) {
+  TORCH_CHECK(is_eigvec_tensor_nonempty,
            "eig_backward: Setting eigenvectors to false in torch.eig doesn't compute eigenvectors ",
            "and hence we cannot compute backward. Please use torch.eig(eigenvectors=True)");
 
   // variable names correspond to the ones in the reference document
-  auto D = lambda;
-  auto U = u;
+  auto D = eigenvalues;
+  auto U = eigenvectors;
   auto D_grad = grads[0];
   auto U_grad = grads[1];
 
@@ -2093,14 +2093,15 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
   // return complex eigenvalues.
   if (!self.is_complex()) {
     auto zeros = at::zeros({1}, D.options());
-    auto no_imag_eigenvalues = false;
+    auto is_imag_eigvals_zero = false;
     // path for torch.eig with always a "real" 2D tensor of eigenvalues
     if (!D.is_complex()) {
-      no_imag_eigenvalues = at::allclose(D.narrow(-1, 1, 1), zeros);
+      // narrow extracts the column corresponding to the imaginary part
+      is_imag_eigvals_zero = at::allclose(D.narrow(-1, 1, 1), zeros);
     }
     // path for torch.linalg.eig with always a complex tensor of eigenvalues
     else {
-      no_imag_eigenvalues = at::allclose(at::imag(D), zeros);
+      is_imag_eigvals_zero = at::allclose(at::imag(D), zeros);
       // insert an additional dimension to be compatible with torch.eig.
       // Recall that it produces 2D tensors.
       // We extract only the real parts as there is no support for
@@ -2110,7 +2111,7 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
     }
     // No support for complex eigenvalues for real inputs yet.
     TORCH_CHECK(
-      no_imag_eigenvalues,
+      is_imag_eigvals_zero,
       "eig_backward: Backward calculation does not support complex eigenvalues for real inputs at the moment.");
   }
   else {
@@ -2166,6 +2167,7 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
   // contribution from the eigenvectors
   Tensor U_contrib;
   if (U_grad.defined()) {
+    // narrow extracts the column corresponding to the real part
     D = D.narrow(-1, 0, 1);
     auto F = (D.transpose(-2, -1) - D);
     if (!F.is_complex()) {
@@ -2199,6 +2201,7 @@ Tensor eig_backward(const std::vector<torch::autograd::Variable> &grads, const T
   // contributions from the eigenvalues
   Tensor D_contrib;
   if (D_grad.defined()) {
+    // narrow extracts the column corresponding to the real part
     D_contrib = D_grad.narrow(-1, 0, 1);
   }
   else {
