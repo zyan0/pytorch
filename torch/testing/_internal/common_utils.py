@@ -1087,6 +1087,9 @@ class TestCase(expecttest.TestCase):
         # and deserves detailed investigation
         return self.assertEqual(*args, exact_dtype=False, **kwargs)
 
+    def _is_dict(self, obj):
+        return isinstance(obj, dict) or isinstance(obj, torch._C.ScriptDict)  # type: ignore
+
     # Compares x and y
     # TODO: default exact_device to True
     def assertEqual(self, x, y, msg: Optional[str] = None, *,
@@ -1195,7 +1198,7 @@ class TestCase(expecttest.TestCase):
             debug_msg = ("Attempted to compare [set] types: "
                          f"Expected: {x}; Actual: {y}.")
             super().assertEqual(x, y, msg=self._get_assert_msg(msg, debug_msg=debug_msg))
-        elif isinstance(x, dict) and isinstance(y, dict):
+        elif self._is_dict(x) and self._is_dict(y):
             if isinstance(x, OrderedDict) and isinstance(y, OrderedDict):
                 self.assertEqual(x.items(), y.items(), atol=atol, rtol=rtol,
                                  msg=msg, exact_dtype=exact_dtype,
@@ -1526,7 +1529,7 @@ def retry(ExceptionToCheck, tries=3, delay=3, skip_after_retries=False):
 # Methods for matrix and tensor generation
 
 # Used in test_autograd.py and test_torch.py
-def make_tensor(size, device: torch.device, dtype: torch.dtype, *, low=None, high=None, 
+def make_tensor(size, device: torch.device, dtype: torch.dtype, *, low=None, high=None,
                 requires_grad: bool = False, discontiguous: bool = False) -> torch.Tensor:
     """ Creates a random tensor with the given size, device and dtype.
 
