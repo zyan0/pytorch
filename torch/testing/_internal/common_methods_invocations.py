@@ -278,7 +278,7 @@ class OpInfo(object):
 
 L = 20
 M = 10
-S = 3
+S = 5
 
 
 def sample_inputs_unary(op_info, device, dtype, requires_grad):
