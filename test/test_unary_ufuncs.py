@@ -58,7 +58,7 @@ _large_float16_vals = (-501, 501,
 _large_float_vals = _large_float16_vals + (-4988429.2, 4988429.2, -1e20, 1e20)
 _float_extremals = (float('inf'), float('-inf'), float('nan'))
 _medium_length = 812
-_large_size = (1029, 917)
+_large_size = (519, 917)
 
 
 # Returns generator of tensors of different sizes filled with values in domain
@@ -238,32 +238,6 @@ class TestUnaryUfuncs(TestCase):
                                                                             high,
                                                                             result.item()))
 
-    # Tests that fn == method == inplace == jit on a simple single tensor input
-    # TODO: should this jitting the method and inplace variants, too?
-    @ops(unary_ufuncs)
-    def test_variant_consistency(self, device, dtype, op):
-        def _fn(t):
-            return op(t)
-
-        t = make_tensor((5, 5), device, dtype, low=op.domain[0], high=op.domain[1])
-        expected = op(t)
-
-        for alt, inplace in ((op.get_method(), False), (op.get_inplace(), True),
-                             (torch.jit.script(_fn), False)):
-            if alt is None:
-                continue
-
-            if inplace and not torch.can_cast(expected.dtype, dtype):
-                # Assert that RuntimeError is raised
-                # for inplace variant of Operators that
-                # promote integer input to floating dtype.
-                with self.assertRaises(RuntimeError):
-                    alt(t.clone())
-                continue
-
-            actual = alt(t.clone())
-            self.assertEqual(actual, expected, rtol=0, atol=0)
-
     # Helper for comparing torch tensors and numpy arrays
     # TODO: should this or assertEqual also validate that strides are equal?
     def assertEqualHelper(self, actual, expected, msg, *, dtype, exact_dtype=True, **kwargs):
@@ -365,10 +339,9 @@ class TestUnaryUfuncs(TestCase):
         self._test_reference_numerics(dtype, op, tensors, equal_nan)
 
     # Tests for testing (dis)contiguity consistency
-
     @ops(unary_ufuncs)
     def test_contig_vs_every_other(self, device, dtype, op):
-        contig = make_tensor((1026,), device=device, dtype=dtype,
+        contig = make_tensor((513,), device=device, dtype=dtype,
                              low=op.domain[0], high=op.domain[1])
         non_contig = contig[::2]
 
@@ -379,7 +352,7 @@ class TestUnaryUfuncs(TestCase):
 
     @ops(unary_ufuncs)
     def test_contig_vs_transposed(self, device, dtype, op):
-        contig = make_tensor((789, 357), device=device, dtype=dtype,
+        contig = make_tensor((219, 357), device=device, dtype=dtype,
                              low=op.domain[0], high=op.domain[1])
         non_contig = contig.T
 
@@ -390,7 +363,7 @@ class TestUnaryUfuncs(TestCase):
 
     @ops(unary_ufuncs)
     def test_non_contig(self, device, dtype, op):
-        shapes = [(5, 7), (1024,)]
+        shapes = [(5, 7), (513,)]
         for shape in shapes:
             contig = make_tensor(shape, device, dtype,
                                  low=op.domain[0], high=op.domain[1])
@@ -461,7 +434,7 @@ class TestUnaryUfuncs(TestCase):
     # per-batch computation.
     @ops(unary_ufuncs)
     def test_batch_vs_slicing(self, device, dtype, op):
-        input = make_tensor((1024, 512), dtype=dtype, device=device,
+        input = make_tensor((256, 128), dtype=dtype, device=device,
                             low=op.domain[0], high=op.domain[1])
 
         actual = op(input)
