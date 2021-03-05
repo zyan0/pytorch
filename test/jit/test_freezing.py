@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from torch.testing._internal.jit_utils import JitTestCase
+import unittest
+from torch.testing._internal.jit_utils import JitTestCase, RUN_CUDA
 
 from torch.testing import FileCheck
 from torch.testing._internal.common_quantized import override_quantized_engine
@@ -10,7 +11,6 @@ from torch.testing._internal.common_utils import set_default_dtype
 from torch.jit._recursive import wrap_cpp_module
 from typing import Any
 from itertools import product
-import unittest
 
 import io
 
@@ -1730,3 +1730,50 @@ class TestFrozenOptimizations(JitTestCase):
             self.run_pass("convert_frozen_ops_to_mkldnn", frozen.graph)
             inp = torch.rand([4, 3, 4, 4])
             self.assertEqual(frozen(inp), mod(inp))
+
+    @unittest.skipIf(not RUN_CUDA, "requires CUDA")
+    def test_freeze_conv_relu_fusion(self):
+        conv_bias = [True, False]
+        conv_ops = [nn.Conv1d, nn.Conv2d, nn.Conv3d]
+        add_z = [True, False]
+        use_tracing = [True, False]
+
+        for use_bias, conv, add_z, tracing in product(conv_bias, conv_ops, add_z, use_tracing):
+            class Net(nn.Module):
+                def __init__(self, in_channels, out_channels, **kwargs):
+                    super(Net, self).__init__()
+                    self.conv = conv(in_channels, out_channels, bias=use_bias, **kwargs)
+                    self.relu = nn.ReLU(inplace=True)
+                    self.add_z = add_z
+
+                def forward(self, x):
+                    identity = x
+                    x = self.conv(x)
+                    if self.add_z:
+                        x = x + identity
+                    x = self.relu(x)
+                    return x
+
+            mod_eager = Net(3, 3, kernel_size=3, stride=2).eval().cuda()
+
+            inps = [4, 3, 4]
+            if conv == nn.Conv2d:
+                inps.append(inps[-1])
+            if conv == nn.Conv3d:
+                inps.append(inps[-1])
+                inps.append(inps[-1])
+            inp = torch.rand(inps).cuda()
+
+            if tracing:
+                scripted_mod = torch.jit.trace(mod_eager, (inp))
+            else:
+                scripted_mod = torch.jit.script(mod_eager)
+
+            self.run_pass("inline", scripted_mod.graph)
+            FileCheck().check("aten::relu").run(scripted_mod.graph)
+            frozen_mod = torch.jit.freeze(scripted_mod)
+            self.run_pass("fuse_frozen_conv_relu", frozen_mod.graph)
+            FileCheck().check("prim::cudnn_convolution_add_relu").run(frozen_mod.graph)
+
+            self.assertEqual(mod_eager(inp), scripted_mod(inp))
+            self.assertEqual(mod_eager(inp), scripted_mod(inp))
