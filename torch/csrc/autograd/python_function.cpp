@@ -362,30 +362,38 @@ static void _wrap_outputs(const std::shared_ptr<PyNode>& cdata, THPFunction *sel
     self->output_info.reserve(num_outputs);
   }
 
-  auto as_variable = [&](PyObject* obj, int i) -> Variable {
-    if (THPVariable_Check(obj)) {
-      return ((THPVariable*)obj)->cdata;
-    }
-    throw TypeError("%s.forward: expected Tensor or tuple of Tensor (got %s) for return value %d",
-        Py_TYPE(self)->tp_name, Py_TYPE(obj)->tp_name, i);
-  };
-
   auto non_differentiable = _parse_non_differentiable(self);
   auto dirty_inputs = _mark_dirty(self);
 
   std::vector<Variable> raw_output_vars;
   raw_output_vars.reserve(num_outputs);
+  size_t num_tensor_outputs = 0;
   for(int i = 0; i < num_outputs; ++i){
-    PyObject* obj = PyTuple_GET_ITEM(raw_output, i);
-    raw_output_vars.push_back(as_variable(obj,i));
+    PyObject* obj = PyTuple_GetItem(raw_output, i);
+    // Only process tensors as outputs for autograd purposes.
+    if (THPVariable_Check(obj)) {
+      raw_output_vars.push_back(((THPVariable*)obj)->cdata);
+      num_tensor_outputs++;
+    }
   }
 
+  // Wrap only the tensor outputs.
   auto wrapped_outputs = _wrap_outputs(input_vars, non_differentiable, dirty_inputs, raw_output_vars, cdata_if_executable);
+
+  size_t tensor_output_idx = 0;
   for (int i = 0; i < num_outputs; i++) {
-    if (is_executable) {
-      self->output_info.emplace_back(wrapped_outputs[i]);
+    PyObject* obj = PyTuple_GetItem(raw_output, i);
+
+    // Keep the non-tensor outputs as is.
+    if (!THPVariable_Check(obj)) {
+      if (is_executable) {
+        self->output_info.emplace_back(wrapped_outputs[tensor_output_idx]);
+      }
+      Py_INCREF(obj);
+      PyTuple_SetItem(outputs, i, obj);
+    } else {
+      PyTuple_SetItem(outputs, i, THPVariable_Wrap(wrapped_outputs[tensor_output_idx++]));
     }
-    PyTuple_SET_ITEM(outputs, i, THPVariable_Wrap(wrapped_outputs[i]));
   }
 }
 
@@ -557,11 +565,14 @@ static void _trace_post_record(
     node = unpacked;
   }
   for (int i = 0; i < num_outputs; ++i) {
-    auto var = (THPVariable*)PyTuple_GET_ITEM(output_objects, i);
-    Value* value = node->outputs()[i];
-    if (var->cdata.defined()) {
-      value->inferTypeFrom(var->cdata);
-      jit::tracer::setValueTrace(var->cdata, value);
+    PyObject* obj = PyTuple_GET_ITEM(output_objects, i);
+    if (THPVariable_Check(obj)) {
+      auto var = (THPVariable*)obj;
+      Value* value = node->outputs()[i];
+      if (var->cdata.defined()) {
+        value->inferTypeFrom(var->cdata);
+        jit::tracer::setValueTrace(var->cdata, value);
+      }
     }
   }
 }
