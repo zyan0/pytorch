@@ -203,6 +203,9 @@ constexpr DispatchKeySet autograd_dispatch_keyset = DispatchKeySet({
     DispatchKey::AutogradOther,
 });
 
+constexpr DispatchKeySet autograd_inplace_dispatch_keyset =
+  autograd_dispatch_keyset | DispatchKeySet(DispatchKey::InplaceOrView);
+
 // backend dispatch keys that map to DispatchKey::AutogradOther
 // NB: keys in this set also get associated with Math
 constexpr DispatchKeySet autogradother_backends = DispatchKeySet({
@@ -262,7 +265,7 @@ static inline DispatchKey legacyExtractDispatchKey(DispatchKeySet s) {
   // is the most likely key that will need this treatment;
   // After Autograd keys are moved from globally enabled set to TensorImpl,
   // we should remove all Autograd keys before taking highestPriority.
-  return (s - autograd_dispatch_keyset).highestPriorityTypeId();
+  return (s - autograd_inplace_dispatch_keyset).highestPriorityTypeId();
 }
 
 template<class T>
