@@ -63,6 +63,7 @@ from .utils import (
     collect_producer_nodes,
     graph_module_from_producer_nodes,
     assert_and_get_unique_device,
+    node_return_type_is_int,
 )
 
 from .qconfig_utils import *
@@ -688,7 +689,12 @@ class Quantizer:
                     'node:' + n.name + \
                     ' in quantized or non quantized environment, env: ' + \
                     str(env) + ' quant_env:' + str(quant_env)
-                env[n.name] = Proxy(quant_env[n.name]).dequantize().node
+                quant_env_node = quant_env[n.name]
+                if node_return_type_is_int(quant_env_node):
+                    # we don't need to dequantize integers
+                    env[n.name] = quant_env[n.name]
+                else:
+                    env[n.name] = Proxy(quant_env[n.name]).dequantize().node
             return env[n.name]
 
         def load_quantized(n: Node) -> Node:
