@@ -1,3 +1,4 @@
+#include <ATen/core/ivalue.h>
 #include <torch/csrc/jit/runtime/register_ops_utils.h>
 #include <torch/csrc/jit/runtime/slice_indices_adjust.h>
 
