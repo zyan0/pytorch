@@ -327,6 +327,14 @@ class TestTorchbind(JitTestCase):
         traced = torch.jit.trace(TryTracing(), ())
         self.assertEqual(torch.zeros(4, 4), traced())
 
+    def test_torchbind_overloaded_method(self):
+        def f():
+            val = torch.classes._TorchScriptTesting._FooOverload(3, 5)
+            stuff1 = val.increment(4)
+            stuff2 = val.increment(4, 5)
+            return stuff1, stuff2
+        self.checkScript(f, ())
+
     def test_torchbind_pass_wrong_type(self):
         with self.assertRaisesRegex(RuntimeError, 'missing attribute capsule'):
             torch.ops._TorchScriptTesting.take_an_instance(torch.rand(3, 4))

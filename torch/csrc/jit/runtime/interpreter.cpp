@@ -2,6 +2,7 @@
 
 #include <ATen/Parallel.h>
 #include <ATen/core/ivalue.h>
+#include <ATen/core/overloaded_function.h>
 #include <ATen/record_function.h>
 #include <c10/core/thread_pool.h>
 #include <c10/util/Exception.h>
@@ -941,7 +942,15 @@ struct CodeImpl {
         break;
       case prim::CallMethod:
         if (auto class_type = node->inputs().at(0)->type()->cast<ClassType>()) {
-          emitCall(&class_type->getMethod(node->s(attr::name)), node->inputs());
+          if (class_type->findOverloadedMethod(node->s(attr::name)).size() >
+              1) {
+            auto overloaded_method =
+                class_type->getMangledOverloadedMethod(node->s(attr::name));
+            emitCall(overloaded_method, node->inputs());
+          } else {
+            emitCall(
+                &class_type->getMethod(node->s(attr::name)), node->inputs());
+          }
         } else {
           emitInterfaceCall(node->s(attr::name), node->inputs());
         }

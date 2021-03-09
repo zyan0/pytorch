@@ -95,6 +95,20 @@ struct FooReadWrite : torch::CustomClassHolder {
   FooReadWrite(int64_t x_, int64_t y_) : x(x_), y(y_) {}
 };
 
+struct FooOverload : torch::CustomClassHolder {
+  int x, y;
+  FooOverload() : x(0), y(0) {}
+  FooOverload(int x_, int y_) : x(x_), y(y_) {}
+
+  int64_t increment(int64_t z) {
+    return (x + y) * z;
+  }
+  int64_t increment(int64_t z, int64_t t) {
+    return (x + y) * z + t;
+  }
+  ~FooOverload() {}
+};
+
 struct LambdaInit : torch::CustomClassHolder {
   int x, y;
   LambdaInit(int x_, int y_) : x(x_), y(y_) {}
@@ -320,6 +334,14 @@ TORCH_LIBRARY(_TorchScriptTesting, m) {
       .def(torch::init<int64_t, int64_t>())
       .def_readwrite("x", &FooReadWrite::x)
       .def_readonly("y", &FooReadWrite::y);
+  m.class_<FooOverload>("_FooOverload")
+      .def(torch::init<int64_t, int64_t>())
+      .def(
+          "increment",
+          (int64_t(FooOverload::*)(int64_t, int64_t))(&FooOverload::increment))
+      .def(
+          "increment",
+          (int64_t(FooOverload::*)(int64_t))(&FooOverload::increment));
 
   m.class_<LambdaInit>("_LambdaInit")
       .def(torch::init([](int64_t x, int64_t y, bool swap) {
