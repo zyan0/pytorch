@@ -85,6 +85,34 @@ class SampleInput(object):
         self.kwargs = kwargs if kwargs is not None else {}
         self.output_process_fn_grad = output_process_fn_grad
 
+    # Unpacks TensorList inputs (tuple or list of tensors) into a single
+    # tuple of tensors. This is useful for functions like gradcheck that do
+    # not work well for TensorList inputs.
+    def unpack_inputs(self):
+        result = []  # type: ignore
+        for arg in self.input:
+            if isinstance(arg, (tuple, list)):
+                result.extend(arg)
+            else:
+                result.append(arg)
+        result.extend(self.args)
+        return result
+
+    # Reverse of #unpack_inputs
+    # pack_inputs(unpack_inputs(inputs)) == inputs
+    def pack_inputs(self, inputs):
+        result = []  # type: ignore
+        i = 0
+        for arg in self.input:
+            if isinstance(arg, (tuple, list)):
+                result.append(inputs[i:i + len(arg)])
+                i += len(arg)
+            else:
+                result.append(inputs[i])
+                i += 1
+        result.extend(inputs[i:])
+        return result
+
     def __repr__(self):
         arguments = [
             f'input[{len(self.input)}]',
@@ -591,26 +619,30 @@ def sample_inputs_div(self, device, dtype, requires_grad, rounding_mode=None):
     ]
 
 def sample_inputs_stack(op_info, device, dtype, requires_grad):
-    return (SampleInput((make_tensor((S, S), device, dtype,
-                                     low=None, high=None,
-                                     requires_grad=requires_grad),
-                        make_tensor((S, S), device, dtype,
-                                    low=None, high=None,
-                                    requires_grad=requires_grad),
-                        make_tensor((S, S), device, dtype,
-                                    low=None, high=None,
-                                    requires_grad=requires_grad)), kwargs=dict(idx=0)),)
+    tensors = (make_tensor((S, S), device, dtype,
+                           low=None, high=None,
+                           requires_grad=requires_grad),
+               make_tensor((S, S), device, dtype,
+                           low=None, high=None,
+                           requires_grad=requires_grad),
+               make_tensor((S, S), device, dtype,
+                           low=None, high=None,
+                           requires_grad=requires_grad))
+
+    return (SampleInput((tensors,), args=(0,)),)
 
 def sample_inputs_hstack_dstack_vstack(op_info, device, dtype, requires_grad):
-    return (SampleInput((make_tensor((S, S), device, dtype,
-                                     low=None, high=None,
-                                     requires_grad=requires_grad),
-                        make_tensor((S, S), device, dtype,
-                                    low=None, high=None,
-                                    requires_grad=requires_grad),
-                        make_tensor((S, S), device, dtype,
-                                    low=None, high=None,
-                                    requires_grad=requires_grad))),)
+    tensors = (make_tensor((S, S), device, dtype,
+                           low=None, high=None,
+                           requires_grad=requires_grad),
+               make_tensor((S, S), device, dtype,
+                           low=None, high=None,
+                           requires_grad=requires_grad),
+               make_tensor((S, S), device, dtype,
+                           low=None, high=None,
+                           requires_grad=requires_grad))
+
+    return (SampleInput((tensors,)),)
 
 def sample_inputs_gather(op_info, device, dtype, requires_grad):
     return (SampleInput((make_tensor((M, S), device, dtype,
@@ -2476,49 +2508,41 @@ op_db: List[OpInfo] = [
            test_inplace_grad=False,
            sample_inputs_func=sample_inputs_sort),
     OpInfo('stack',
-           # gradcheck expects the input arguments as a flat list
-           op=lambda *args, idx: torch.stack([*args], idx),
            dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16),
            test_inplace_grad=False,
            supports_tensor_out=False,
+           sample_inputs_func=sample_inputs_stack,
            skips=(
-               SkipInfo('TestCommon', 'test_variant_consistency_jit',
-                        dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16)),
-           ),
-           sample_inputs_func=sample_inputs_stack),
+               # This test is not working properly for TensorList inputs
+               SkipInfo('TestCommon', 'test_variant_consistency_jit'),
+           )),
     OpInfo('hstack',
-           # gradcheck expects the input arguments as a flat list
-           op=lambda *args: torch.hstack([*args]),
            dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16),
            test_inplace_grad=False,
            supports_tensor_out=False,
+           sample_inputs_func=sample_inputs_hstack_dstack_vstack,
            skips=(
-               SkipInfo('TestCommon', 'test_variant_consistency_jit',
-                        dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16)),
-           ),
-           sample_inputs_func=sample_inputs_hstack_dstack_vstack),
+               # This test is not working properly for TensorList inputs
+               SkipInfo('TestCommon', 'test_variant_consistency_jit'),
+           )),
     OpInfo('vstack',
-           # gradcheck expects the input arguments as a flat list
-           op=lambda *args: torch.vstack([*args]),
            dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16),
            test_inplace_grad=False,
            supports_tensor_out=False,
+           sample_inputs_func=sample_inputs_hstack_dstack_vstack,
            skips=(
-               SkipInfo('TestCommon', 'test_variant_consistency_jit',
-                        dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16)),
-           ),
-           sample_inputs_func=sample_inputs_hstack_dstack_vstack),
+               # This test is not working properly for TensorList inputs
+               SkipInfo('TestCommon', 'test_variant_consistency_jit'),
+           )),
     OpInfo('dstack',
-           # gradcheck expects the input arguments as a flat list
-           op=lambda *args: torch.dstack([*args]),
            dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16),
            test_inplace_grad=False,
            supports_tensor_out=False,
+           sample_inputs_func=sample_inputs_hstack_dstack_vstack,
            skips=(
-               SkipInfo('TestCommon', 'test_variant_consistency_jit',
-                        dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16)),
-           ),
-           sample_inputs_func=sample_inputs_hstack_dstack_vstack),
+               # This test is not working properly for TensorList inputs
+               SkipInfo('TestCommon', 'test_variant_consistency_jit'),
+           )),
     OpInfo('movedim',
            dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16),
            test_inplace_grad=False,
