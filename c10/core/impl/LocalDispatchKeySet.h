@@ -49,6 +49,8 @@ static_assert(std::is_pod<PODLocalDispatchKeySet>::value, "PODLocalDispatchKeySe
 struct C10_API LocalDispatchKeySet {
   /* implicit */ LocalDispatchKeySet(PODLocalDispatchKeySet x)
     : included_(x.included()), excluded_(x.excluded()) {}
+  //LocalDispatchKeySet(const LocalDispatchKeySet& x)
+    //: included_(x.included_), excluded_(x.excluded_) {}
   DispatchKeySet included_;
   DispatchKeySet excluded_;
 };
@@ -121,5 +123,6 @@ C10_API bool tls_is_dispatch_key_excluded(DispatchKey x);
 C10_API void tls_set_dispatch_key_excluded(DispatchKey x, bool desired_state);
 C10_API bool tls_is_dispatch_key_included(DispatchKey x);
 C10_API void tls_set_dispatch_key_included(DispatchKey x, bool desired_state);
+C10_API bool tls_is_dispatch_keyset_excluded(DispatchKeySet ks);
 
 }} // namespace c10::impl

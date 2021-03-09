@@ -55,7 +55,7 @@ VIEW_FUNCTIONS = {
 for key in VIEW_FUNCTIONS_WITH_METADATA_CHANGE:
     VIEW_FUNCTIONS[key] = 'self'
 
-# Functions for which we use torch::autograd::CreationMeta::MULTI_OUTPUT_SAFE. I.e., the ones for
+# Functions for which we use CreationMeta::MULTI_OUTPUT_SAFE. I.e., the ones for
 # which inplace modification of outputs is being gradually deprecated.
 MULTI_OUTPUT_SAFE_FUNCTIONS = {
     'split',
@@ -129,6 +129,13 @@ ${assign_return_values} ([&]() {
   return at::redispatch::${api_name}(${unpacked_args});
 })();
 """)
+
+THROW_IF_VARIABLETYPE_ON = """
+TORCH_CHECK(c10::impl::tls_is_dispatch_keyset_excluded(c10::autograd_dispatch_keyset),
+  "Calling inplace/view ops on inference tensor outside InferenceMode is not allowed, ",
+  "consider making a clone first.",
+  "If you have a valid use case, please make a feature request to PyTorch.");
+"""
 
 TMP_VAR = 'tmp'
 
@@ -272,7 +279,7 @@ def emit_view_body(fn: NativeFunctionWithDifferentiabilityInfo, var: str) -> Tup
         raise TypeError(f'The view info should be a string for {base_name}, but it is: {view_info}')
     if len(differentiable_output_vars) == 0:
         # no output is differentiable (.indices() for SparseTensors for example)
-        rhs_value = (f'torch::autograd::as_view({view_info}, {var}, '
+        rhs_value = (f'as_view({view_info}, {var}, '
                      f'/* is_bw_differentiable */ false, /* is_fw_differentiable */ false)')
     elif len(differentiable_output_vars) == 1:
         # Single differentiable output (Tensor or Tensor[])
@@ -285,10 +292,10 @@ def emit_view_body(fn: NativeFunctionWithDifferentiabilityInfo, var: str) -> Tup
         # See NOTE [ View + Inplace detection ] for more details about this logic
         if is_tensor_list_type(return_info.type):
             if base_name in MULTI_OUTPUT_SAFE_FUNCTIONS:
-                creation_meta = 'torch::autograd::CreationMeta::MULTI_OUTPUT_SAFE'
+                creation_meta = 'CreationMeta::MULTI_OUTPUT_SAFE'
             else:
-                creation_meta = 'torch::autograd::CreationMeta::MULTI_OUTPUT_NODE'
-            call += (f'torch::autograd::as_view(/* base */ {view_info}, /* output */ {var}, /* is_bw_differentiable */ true, '
+                creation_meta = 'CreationMeta::MULTI_OUTPUT_NODE'
+            call += (f'as_view(/* base */ {view_info}, /* output */ {var}, /* is_bw_differentiable */ true, '
                      '/* is_fw_differentiable */ true, '
                      f'/* creation_meta */ {creation_meta});')
             rhs_value = f'std::move({var})'
@@ -296,9 +303,9 @@ def emit_view_body(fn: NativeFunctionWithDifferentiabilityInfo, var: str) -> Tup
             _, unpacked_bindings = unpack_args(f)
             call += emit_view_lambda(f, unpacked_bindings)
             creation_meta = ('at::GradMode::is_enabled() ? '
-                             'torch::autograd::CreationMeta::DEFAULT : '
-                             'torch::autograd::CreationMeta::NO_GRAD_MODE')
-            rhs_value = (f'torch::autograd::as_view(/* base */ {view_info}, /* output */ {var}, /* is_bw_differentiable */ true, '
+                             'CreationMeta::DEFAULT : '
+                             'CreationMeta::NO_GRAD_MODE')
+            rhs_value = (f'as_view(/* base */ {view_info}, /* output */ {var}, /* is_bw_differentiable */ true, '
                          '/* is_fw_differentiable */ true, '
                          f'/* view_func */ func, /* creation_meta */ {creation_meta})')
     else:
@@ -327,14 +334,25 @@ def emit_inplace_or_view_body(fn: NativeFunctionWithDifferentiabilityInfo) -> Li
         api_name = sig_group.faithful_signature.name()
     else:
         api_name = sig_group.signature.name()
-    # inplace_view_body.append(THROW_IF_VARIABLETYPE_ON)
+    # Throws if a InplaceOrView kernel is hit without Autograd being disabled.
+    # There're two valid cases calling InplaceOrView:
+    #  - redispatch from VariableType kernel (AutoNonVariableTypeMode is on)
+    #  - In inference mode where Autograd keys are excluded as well.
+    # If InplaceOrView is hit without Autograd keys being disabled, e.g. apply
+    # inplace/view op on inference tensor outside inference mode
+    # If we want to properly support these cases, we need to setup
+    # InplaceOrView kernel to make sure the output is inference tensor as well (since
+    # their base tensor doesn't have complete information about view/version).
+    # This is possible to do, but we currently don't see such use cases so
+    # simply throwing errors here.
+    inplace_view_body.append(THROW_IF_VARIABLETYPE_ON)
     if modifies_arguments(f):  # inplace op
         inplace_view_body.append(INPLACE_REDISPATCH.substitute(
             api_name=api_name,
             unpacked_args=redispatch_args,
         ))
         for r in cpp.return_names(f):
-            inplace_view_body.append(f'torch::autograd::increment_version({r});')
+            inplace_view_body.append(f'increment_version({r});')
     else:  # view op
         inplace_view_body.append(VIEW_REDISPATCH.substitute(
             assign_return_values='auto ' + TMP_VAR + ' = ',

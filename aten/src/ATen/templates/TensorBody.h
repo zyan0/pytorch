@@ -1,6 +1,7 @@
 #pragma once
 
 #include <c10/core/Device.h>
+#include <c10/core/inference_mode.h>
 #include <c10/core/Layout.h>
 #include <c10/core/MemoryFormat.h>
 #include <c10/core/QScheme.h>
@@ -592,7 +593,8 @@ class TORCH_API Tensor {
   /// Enables .grad() for non-leaf Tensors.
 
   Tensor& set_requires_grad(bool requires_grad) {
-    impl_->set_requires_grad(requires_grad);
+    // requires_grad cannot be set to true in InferenceMode.
+    impl_->set_requires_grad(!c10::InferenceMode::is_enabled() && requires_grad);
     return *this;
   }
   bool requires_grad() const {
