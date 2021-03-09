@@ -980,10 +980,14 @@ Tensor tile(const Tensor& self, IntArrayRef reps){
   return self.repeat(reps);
 }
 
+//
+// templated for ArrayRef<int64_t> and SmallVector<int64_t> use cases
+//
+template <typename Vec>
 Tensor alias_with_sizes_and_strides(
     const Tensor& self,
-    const c10::IntArrayRef sizes,
-    const c10::IntArrayRef strides) {
+    const Vec& sizes,
+    const Vec& strides) {
   Tensor self_;
   if (self.is_quantized()) {
     auto impl = c10::make_intrusive<QTensorImpl>(
@@ -2070,7 +2074,7 @@ Tensor numpy_T(const Tensor &self) {
 }
 
 Tensor view(const Tensor& self, IntArrayRef size) {
-  auto inferred_size = at::infer_size(size, self.numel());
+  at::DimVector inferred_size = at::infer_size_dv(size, self.numel());
   auto stride = at::detail::computeStride(self.sizes(),
                                           self.strides(),
                                           inferred_size);
